@@ -1,0 +1,9 @@
+# Configuração local com as chaves do Supabase
+js/config.js
+
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.*

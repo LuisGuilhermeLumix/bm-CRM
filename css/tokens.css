@@ -1,0 +1,135 @@
+/* ============================================================================
+   Lumix CRM — design tokens
+   Tudo que é cor/tipografia/espaçamento mora aqui. O tema escuro é o padrão;
+   o claro é ativado com <html data-theme="light">.
+   ============================================================================ */
+
+:root {
+  color-scheme: dark;
+
+  /* Tipografia */
+  --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-base: 14px;
+  --fs-md: 15px;
+  --fs-lg: 17px;
+  --fs-xl: 20px;
+  --fs-2xl: 24px;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  /* Superfícies */
+  --bg: #0b0f19;
+  --surface: #111827;
+  --surface-2: #1f2937;
+  --surface-3: #273449;
+  --surface-hover: rgba(255, 255, 255, 0.04);
+  --surface-active: rgba(255, 255, 255, 0.08);
+  --input-bg: #0d1322;
+  --overlay: rgba(2, 6, 23, 0.7);
+
+  /* Bordas */
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --border-focus: #6366f1;
+
+  /* Texto */
+  --text: #e5e7eb;
+  --text-2: #9ca3af;
+  --text-3: #6b7280;
+  --text-inverse: #0b0f19;
+
+  /* Destaque */
+  --accent: #6366f1;
+  --accent-hover: #4f46e5;
+  --accent-soft: rgba(99, 102, 241, 0.16);
+  --accent-ring: rgba(99, 102, 241, 0.35);
+  --on-accent: #ffffff;
+
+  /* Semânticas */
+  --danger: #ef4444;
+  --danger-hover: #dc2626;
+  --danger-soft: rgba(239, 68, 68, 0.14);
+  --success: #22c55e;
+  --success-soft: rgba(34, 197, 94, 0.14);
+  --warning: #f59e0b;
+  --warning-soft: rgba(245, 158, 11, 0.14);
+  --info: #3b82f6;
+
+  /* Paleta de 12 cores (colunas / tags / opções) */
+  --c-red: #ef4444;
+  --c-orange: #f97316;
+  --c-amber: #f59e0b;
+  --c-green: #22c55e;
+  --c-emerald: #10b981;
+  --c-cyan: #06b6d4;
+  --c-blue: #3b82f6;
+  --c-indigo: #6366f1;
+  --c-violet: #8b5cf6;
+  --c-pink: #ec4899;
+  --c-gray: #6b7280;
+  --c-brown: #9c6644;
+
+  /* Formas */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* Sombras */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.5);
+  --shadow-drag: 0 12px 28px rgba(0, 0, 0, 0.55);
+
+  /* Movimento */
+  --transition: 150ms ease;
+
+  /* Dimensões */
+  --sidebar-w: 248px;
+  --sidebar-collapsed-w: 64px;
+  --topbar-h: 56px;
+  --column-w: 300px;
+  --settings-w: 440px;
+  --modal-w: 860px;
+
+  /* Espaçamento */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f5f6fa;
+  --surface: #ffffff;
+  --surface-2: #f3f4f6;
+  --surface-3: #e5e7eb;
+  --surface-hover: rgba(17, 24, 39, 0.04);
+  --surface-active: rgba(17, 24, 39, 0.08);
+  --input-bg: #ffffff;
+  --overlay: rgba(17, 24, 39, 0.45);
+
+  --border: #e5e7eb;
+  --border-strong: #d1d5db;
+
+  --text: #111827;
+  --text-2: #6b7280;
+  --text-3: #9ca3af;
+  --text-inverse: #ffffff;
+
+  --accent-soft: rgba(99, 102, 241, 0.12);
+
+  --shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.06);
+  --shadow-md: 0 4px 14px rgba(17, 24, 39, 0.08);
+  --shadow-lg: 0 16px 40px rgba(17, 24, 39, 0.16);
+  --shadow-drag: 0 12px 28px rgba(17, 24, 39, 0.2);
+}
