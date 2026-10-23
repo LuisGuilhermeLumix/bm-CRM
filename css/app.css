@@ -1,5 +1,5 @@
 /* ============================================================================
-   Lumix CRM — estilos da aplicação
+   Lumix BM — estilos da aplicação
    Nenhuma cor hardcoded aqui: tudo vem de tokens.css (exceto cores que o
    usuário escolheu e chegam via style inline / variável --c).
    ============================================================================ */
@@ -689,3 +689,7 @@ kbd { font-family: inherit; font-size: var(--fs-xs); border: 1px solid var(--bor
   .popover--editor { padding: 12px; }
   .icon-picker__grid { grid-template-columns: repeat(6, 1fr); }
 }
+
+/* Logo: a imagem preenche o quadradinho, mantendo o canto arredondado do .brand__logo */
+.brand__logo img { width: 100%; height: 100%; object-fit: contain; border-radius: inherit; display: block; }
+.brand__logo:has(img) { background: transparent; }

@@ -60,8 +60,8 @@ function render() {
   host.innerHTML = `
     <div class="sidebar__head">
       <div class="brand">
-        <span class="brand__logo">${icon('kanban')}</span>
-        <span class="brand__text">Lumix CRM</span>
+        <span class="brand__logo"><img src="assets/lumix-logo.png" alt="Lumix BM" /></span>
+        <span class="brand__text">Lumix BM</span>
       </div>
       <button class="btn btn--ghost btn--icon btn--sm btn-collapse-sidebar" id="btnCollapse" title="Recolher / expandir">${icon('panel-left')}</button>
     </div>

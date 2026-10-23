@@ -1,4 +1,4 @@
-# Lumix CRM
+# Lumix BM
 
 CRM interno da Lumix em formato kanban personalizável. Diferente de um CRM de nicho, aqui **você define os status (colunas), os campos de cada card e as tags**, cada um com nome e cor próprios. Serve para gerenciar clientes e leads de vários nichos, cada um no seu board.
 

@@ -17,8 +17,8 @@ export function renderLogin(host, { mode = 'login', onRecovered } = {}) {
       <button class="btn btn--ghost btn--icon login__theme" id="loginTheme" title="Alternar tema">${icon(currentTheme() === 'dark' ? 'sun' : 'moon')}</button>
       <div class="login__card">
         <div class="login__brand">
-          <span class="brand__logo">${icon('kanban')}</span>
-          <div><h1>Lumix CRM</h1><p>${esc(subtitle)}</p></div>
+          <span class="brand__logo"><img src="assets/lumix-logo.png" alt="Lumix BM" /></span>
+          <div><h1>Lumix BM</h1><p>${esc(subtitle)}</p></div>
         </div>
         <form id="loginForm" novalidate>
           ${mode !== 'recovery' ? `
@@ -108,8 +108,8 @@ export function renderSetup(host) {
     <div class="login">
       <div class="login__card setup-box">
         <div class="login__brand">
-          <span class="brand__logo">${icon('kanban')}</span>
-          <div><h1>Lumix CRM</h1><p>Configuração pendente</p></div>
+          <span class="brand__logo"><img src="assets/lumix-logo.png" alt="Lumix BM" /></span>
+          <div><h1>Lumix BM</h1><p>Configuração pendente</p></div>
         </div>
         <p class="muted">O arquivo <code>js/config.js</code> ainda está com os valores de exemplo.</p>
         <p class="muted">Copie <code>js/config.example.js</code> para <code>js/config.js</code> e preencha <code>SUPABASE_URL</code> e <code>SUPABASE_ANON_KEY</code> (Supabase → Project Settings → API). Depois recarregue a página.</p>
@@ -125,7 +125,7 @@ export function renderNoAccess(host, { email = '', onSignOut } = {}) {
       <div class="login__card setup-box">
         <div class="login__brand">
           <span class="brand__logo">${icon('lock')}</span>
-          <div><h1>Lumix CRM</h1><p>Acesso não liberado</p></div>
+          <div><h1>Lumix BM</h1><p>Acesso não liberado</p></div>
         </div>
         <p class="muted">A conta <b>${esc(email)}</b> existe, mas ainda não foi liberada para este CRM.</p>
         <p class="muted">Peça a quem administra o Supabase para marcar <code>allowed = true</code> no seu perfil (tabela <code>profiles</code>) e entre de novo.</p>
