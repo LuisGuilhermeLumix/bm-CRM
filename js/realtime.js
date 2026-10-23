@@ -76,7 +76,13 @@ function handle(table, payload) {
       return;
     }
     case 'profiles': {
-      if (eventType === 'DELETE') { delete state.profiles[o.id]; } else { state.profiles[n.id] = n; }
+      if (eventType === 'DELETE') {
+        delete state.profiles[o.id];
+        if (state.profile?.id === o.id) state.profile = null;
+      } else {
+        state.profiles[n.id] = n;
+        if (state.user?.id === n.id) state.profile = n;
+      }
       emit('profiles');
       return;
     }

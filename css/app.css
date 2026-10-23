@@ -693,3 +693,30 @@ kbd { font-family: inherit; font-size: var(--fs-xs); border: 1px solid var(--bor
 /* Logo: a imagem preenche o quadradinho, mantendo o canto arredondado do .brand__logo */
 .brand__logo img { width: 100%; height: 100%; object-fit: contain; border-radius: inherit; display: block; }
 .brand__logo:has(img) { background: transparent; }
+
+/* ---------- Avatar com foto ---------- */
+.avatar.avatar--img { background: var(--surface-2); overflow: hidden; padding: 0; }
+.avatar.avatar--img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* ---------- Editor de perfil ---------- */
+.profile-editor { display: flex; flex-direction: column; gap: 16px; }
+.profile-editor__avatar-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; padding-bottom: 4px; }
+.profile-editor__avatar {
+  position: relative; width: 96px; height: 96px; border-radius: 50%; cursor: pointer;
+  background: var(--c, var(--accent)); color: var(--on-accent);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 36px; font-weight: var(--fw-semibold); text-transform: uppercase;
+  border: 2px solid var(--border); overflow: hidden; transition: transform var(--transition);
+}
+.profile-editor__avatar:hover { transform: scale(1.03); }
+.profile-editor__avatar:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+.profile-editor__avatar.has-img { background: var(--surface-2); }
+.profile-editor__avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.profile-editor__avatar-edit {
+  position: absolute; right: 2px; bottom: 2px; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--accent); color: var(--on-accent); display: inline-flex; align-items: center; justify-content: center;
+  border: 2px solid var(--surface); pointer-events: none;
+}
+.profile-editor__avatar-edit .ico { width: 12px; height: 12px; }
+.profile-editor__initial { line-height: 1; }
+.profile-editor__actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }

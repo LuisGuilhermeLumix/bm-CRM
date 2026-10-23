@@ -1,15 +1,16 @@
 // Sidebar: lista de boards, novo board, usuário e tema
 import Sortable from 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/modular/sortable.esm.js';
 import { icon, refreshIcons } from './icons.js';
-import { esc, initials, storage, isMobile } from '../utils.js';
+import { esc, storage, isMobile } from '../utils.js';
 import { state, on, sortedBoards } from '../state.js';
 import { openBoard, reorderBoards } from '../boards.js';
 import { signOut } from '../auth.js';
 import { currentTheme, toggleTheme } from './theme.js';
 import { openMenu, pushClosable, removeClosable } from './dialog.js';
+import { openProfileEditor } from './profileEditor.js';
 import { toastError } from './toast.js';
 import { openNewBoardDialog } from './boardForm.js';
-import { emptyHtml } from './common.js';
+import { avatarHtml, emptyHtml } from './common.js';
 
 const COLLAPSE_KEY = 'lumix.sidebarCollapsed';
 let sortable = null;
@@ -82,7 +83,7 @@ function render() {
     </div>
     <div class="sidebar__footer">
       <button class="user-chip" id="userMenu" title="${esc(p?.name || '')}">
-        <span class="avatar" style="--c:${esc(p?.avatar_color || '#6366f1')}">${esc(initials(p?.name || state.user?.email))}</span>
+        ${avatarHtml(p || { name: state.user?.email || '', avatar_color: '#6b7280' })}
         <span class="user-chip__name">${esc(p?.name || state.user?.email || '')}</span>
         ${icon('chevron-up', 'ico--sm')}
       </button>
@@ -105,10 +106,12 @@ function render() {
   host.querySelector('#userMenu').addEventListener('click', (e) => {
     openMenu(e.currentTarget, [
       { label: p?.name || state.user?.email || '', header: true },
+      { label: 'Editar perfil', icon: 'user-pen', value: 'profile' },
       { label: theme === 'dark' ? 'Tema claro' : 'Tema escuro', icon: theme === 'dark' ? 'sun' : 'moon', value: 'theme' },
       'sep',
       { label: 'Sair', icon: 'log-out', value: 'logout', danger: true },
     ], async (v) => {
+      if (v === 'profile') openProfileEditor();
       if (v === 'theme') toggleTheme();
       if (v === 'logout') { try { await signOut(); } catch (err) { toastError(err); } }
     });
