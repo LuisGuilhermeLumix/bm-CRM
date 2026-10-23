@@ -5,10 +5,10 @@ import { esc, el, randomPaletteColor, isTyping, relativeTime } from '../utils.js
 import { state, on, getBoard, getColumn, getField, getTag, sortedColumns, sortedFields, sortedTags } from '../state.js';
 import { updateBoard, deleteBoard } from '../boards.js';
 import { createColumn, updateColumn, deleteColumn, reorderColumns } from '../columns.js';
-import { fieldTypeInfo, deleteField, reorderFields, fieldUsage } from '../fields.js';
+import { fieldTypeInfo, deleteField, reorderFields, fieldUsage, updateField } from '../fields.js';
 import { createTag, updateTag, deleteTag, tagUsage } from '../tags.js';
-import { archiveCard, deleteCard } from '../cards.js';
-import { chipHtml, emptyHtml } from './common.js';
+import { archiveCard, deleteCard, fieldCardUsage } from '../cards.js';
+import { chipHtml, emptyHtml, toggleHtml } from './common.js';
 import { colorGridHtml, bindColorGrid, openColorPopover } from './colorPicker.js';
 import { openIconPicker } from './iconPicker.js';
 import { openFieldEditor } from './fieldEditor.js';
@@ -238,6 +238,7 @@ function renderFields(body) {
       ${fields.map((f) => {
         const t = fieldTypeInfo(f.type);
         const usage = fieldUsage(f.id);
+        const inCards = fieldCardUsage(f.id);
         const nOpts = (f.options || []).length;
         const nStatus = (f.status_options || []).length;
         return `
@@ -248,7 +249,7 @@ function renderFields(body) {
             <span class="settings-row__name">${esc(f.name)}</span>
             <span class="settings-row__icons">
               <button type="button" class="btn btn--ghost btn--icon btn--sm" data-edit="${f.id}" title="Editar">${icon('pencil')}</button>
-              <button type="button" class="btn btn--ghost btn--icon btn--sm" data-del="${f.id}" title="Excluir">${icon('trash-2')}</button>
+              <button type="button" class="btn btn--ghost btn--icon btn--sm" data-del="${f.id}" title="Excluir do board">${icon('trash-2')}</button>
             </span>
           </div>
           <div class="settings-row__sub">
@@ -257,7 +258,11 @@ function renderFields(body) {
             ${f.required ? chipHtml('Obrigatório', '#ef4444') : ''}
             ${f.status_enabled ? chipHtml(`${f.status_label || 'Status'} · ${nStatus} ${nStatus === 1 ? 'opção' : 'opções'}`, '#06b6d4') : ''}
             ${(f.type === 'select' || f.type === 'multiselect') ? `<span>· ${nOpts} ${nOpts === 1 ? 'opção' : 'opções'}</span>` : ''}
-            ${usage ? `<span>· com valor em ${usage} ${usage === 1 ? 'card' : 'cards'}</span>` : ''}
+            <span>· em ${inCards} ${inCards === 1 ? 'card' : 'cards'}</span>
+            ${usage ? `<span>· com valor em ${usage}</span>` : ''}
+          </div>
+          <div class="settings-row__sub">
+            ${toggleHtml({ id: `fdef-${f.id}`, label: 'Padrão em novos cards', checked: f.default_on_new_cards !== false })}
           </div>
         </div>`;
       }).join('')}
@@ -266,7 +271,7 @@ function renderFields(body) {
       text: 'Campos aparecem no modal de cada card. Ex.: Telefone, Empresa, Valor, Próximo contato.',
     })}
     <div><button type="button" class="btn" id="newFieldBtn">${icon('plus')} Novo campo</button></div>
-    <p class="hint">Os campos também podem ser editados direto no card (lápis ao lado do nome). Arraste pelo ícone para mudar a ordem.</p>`;
+    <p class="hint">Cada card tem seus próprios campos: aqui fica o catálogo do board. "Padrão em novos cards" define quais entram automaticamente ao criar um card. A ordem aqui é a ordem padrão; cada card pode reordenar os seus. Excluir aqui remove o campo de todos os cards.</p>`;
 
   const list = body.querySelector('#setFields');
   if (list) {
@@ -279,15 +284,20 @@ function renderFields(body) {
     }));
   }
   body.querySelector('#newFieldBtn').addEventListener('click', (e) => openFieldEditor(e.currentTarget, { fieldId: null }));
+  body.querySelectorAll('[id^="fdef-"]').forEach((inp) => inp.addEventListener('change', () => {
+    const id = inp.id.slice(5);
+    updateField(id, { default_on_new_cards: inp.checked }).catch((e) => { toastError(e); inp.checked = !inp.checked; });
+  }));
   body.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => openFieldEditor(b, { fieldId: b.dataset.edit })));
   body.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
     const f = getField(b.dataset.del);
     if (!f) return;
     const usage = fieldUsage(f.id);
+    const inCards = fieldCardUsage(f.id);
     const ok = await confirmDialog({
-      title: 'Excluir campo',
-      message: `Excluir o campo "<b>${esc(f.name)}</b>"?${usage ? ` O valor preenchido em <b>${usage} ${usage === 1 ? 'card' : 'cards'}</b> será apagado.` : ''}`,
-      confirmText: 'Excluir',
+      title: 'Excluir campo do board',
+      message: `Excluir o campo "<b>${esc(f.name)}</b>" do board?${inCards ? ` Ele está em uso em <b>${inCards} ${inCards === 1 ? 'card' : 'cards'}</b>` : ' Nenhum card usa esse campo'}${usage ? ` e tem valor preenchido em ${usage} ${usage === 1 ? 'card' : 'cards'}, que será apagado.` : '.'}`,
+      confirmText: 'Excluir do board',
     });
     if (!ok) return;
     try { await deleteField(f.id); toastSuccess('Campo excluído.'); } catch (e) { toastError(e); }

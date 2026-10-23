@@ -3,10 +3,10 @@ import Sortable from 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/modular/sor
 import { icon, refreshIcons } from './icons.js';
 import { esc, relativeTime, formatDateTimeBR, isTyping, randomPaletteColor } from '../utils.js';
 import {
-  state, on, flushPendingRenders, getColumn, getTag, profileOf, sortedColumns, sortedFields, cardsInColumn, hasActiveFilters,
+  state, on, flushPendingRenders, getColumn, getTag, profileOf, sortedColumns, cardsInColumn, hasActiveFilters,
 } from '../state.js';
 import { createColumn, updateColumn, deleteColumn, reorderColumns, moveColumn } from '../columns.js';
-import { createCard, moveCard, cardMatchesFilters } from '../cards.js';
+import { createCard, moveCard, cardMatchesFilters, cardFields } from '../cards.js';
 import { chipHtml, avatarHtml, emptyHtml } from './common.js';
 import { fieldSummaryHtml } from './fieldInputs.js';
 import { openMenu, openDialog, confirmDialog, promptDialog } from './dialog.js';
@@ -149,7 +149,8 @@ function addColumnHtml() {
 
 function cardHtml(card) {
   const tags = (card.tag_ids || []).map(getTag).filter(Boolean);
-  const fields = sortedFields().filter((f) => f.show_on_card).map((f) => fieldSummaryHtml(f, card.values)).filter(Boolean);
+  // só os campos que ESTE card tem (card.field_ids), e só os marcados "mostrar no card"
+  const fields = cardFields(card).filter((f) => f.show_on_card).map((f) => fieldSummaryHtml(f, card.values)).filter(Boolean);
   const creator = profileOf(card.created_by);
   return `
   <article class="card" data-card-id="${card.id}">

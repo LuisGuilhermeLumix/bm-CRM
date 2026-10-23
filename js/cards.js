@@ -1,7 +1,7 @@
 // CRUD de cards, mover/reordenar, atividade, filtros
 import { sb, run } from './supabase.js';
 import {
-  state, emit, upsertCard, removeCard, getCard, getTag, cardsInColumn, reindexColumnLocally,
+  state, emit, upsertCard, removeCard, getCard, getTag, getField, cardsInColumn, reindexColumnLocally, sortedFields,
 } from './state.js';
 import { formatCurrency, formatNumber, formatDateBR } from './utils.js';
 
@@ -20,16 +20,70 @@ export async function fetchCards(boardId) {
  */
 export function normalizeCard(row) {
   const { card_tags, ...card } = row;
-  const out = { ...card, values: card.values || {} };
+  const out = { ...card, values: card.values || {}, field_ids: Array.isArray(card.field_ids) ? card.field_ids : [] };
   if (Array.isArray(card_tags)) out.tag_ids = card_tags.map((x) => x.tag_id);
   return out;
+}
+
+// --- Campos do card ----------------------------------------------------------
+// Cada card tem seu próprio conjunto/ordem de campos em field_ids; o board é só
+// o catálogo de definições.
+
+/** Definições dos campos deste card, na ordem de card.field_ids (ignora ids órfãos). */
+export function cardFields(card) {
+  return (card?.field_ids || []).map(getField).filter(Boolean);
+}
+
+/** Ids dos campos que entram em um card novo (default_on_new_cards), na ordem do board. */
+export function defaultFieldIds() {
+  return sortedFields().filter((f) => f.default_on_new_cards !== false).map((f) => f.id);
+}
+
+/** Quantos cards do board têm o campo (no field_ids). */
+export function fieldCardUsage(fieldId) {
+  return state.cards.filter((c) => c.field_ids?.includes(fieldId)).length;
+}
+
+export async function addFieldToCard(cardId, fieldId) {
+  const card = getCard(cardId);
+  if (!card || card.field_ids.includes(fieldId)) return card;
+  return updateCard(cardId, { field_ids: [...card.field_ids, fieldId] });
+}
+
+export async function reorderCardFields(cardId, ids) {
+  const card = getCard(cardId);
+  if (!card) return;
+  // mantém ids que a lista não conhece (ex.: adicionados por outra pessoa) no fim
+  const extra = card.field_ids.filter((id) => !ids.includes(id));
+  return updateCard(cardId, { field_ids: [...ids, ...extra] });
+}
+
+/** Remove o campo SÓ deste card (array + valores), via RPC. Otimista. */
+export async function removeFieldFromCard(cardId, fieldId) {
+  const card = getCard(cardId);
+  if (!card) return;
+  const before = { field_ids: card.field_ids, values: { ...card.values } };
+  card.field_ids = card.field_ids.filter((id) => id !== fieldId);
+  delete card.values[fieldId];
+  delete card.values[`${fieldId}:status`];
+  emit('cards');
+  try {
+    const row = await run(sb.rpc('remove_field_from_card', { p_card_id: cardId, p_field_id: fieldId }));
+    upsertCard(normalizeCard(row));
+    emit('cards');
+    return getCard(cardId);
+  } catch (e) {
+    Object.assign(card, before);
+    emit('cards');
+    throw e;
+  }
 }
 
 export async function createCard(boardId, columnId, title, extra = {}) {
   const position = cardsInColumn(columnId).length;
   const row = await run(
     sb.from('cards')
-      .insert({ board_id: boardId, column_id: columnId, title, position, created_by: state.user.id, values: {}, ...extra })
+      .insert({ board_id: boardId, column_id: columnId, title, position, created_by: state.user.id, values: {}, field_ids: defaultFieldIds(), ...extra })
       .select('*, card_tags(tag_id)').single(),
   );
   const card = normalizeCard(row);

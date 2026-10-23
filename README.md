@@ -24,6 +24,8 @@ Stack: HTML + CSS + JavaScript vanilla (módulos ES, sem build), [Supabase](http
 4. Rode, na ordem, os outros scripts da pasta `supabase/migrations/` do mesmo jeito (copiar, colar, **Run**). Todos são idempotentes:
    - [`002_access_allowlist.sql`](supabase/migrations/002_access_allowlist.sql) — cria a coluna `profiles.allowed` e troca as políticas de RLS para "só quem está liberado acessa". Útil quando o projeto Supabase é compartilhado com outros sistemas. Edite a lista de e-mails no fim do arquivo antes de rodar.
    - [`003_field_icon_status.sql`](supabase/migrations/003_field_icon_status.sql) — ícone por campo e status vinculado ao campo (colunas em `fields` + funções `remove_field_status_option` e `strip_field_values` atualizada).
+   - [`004_profile_avatar.sql`](supabase/migrations/004_profile_avatar.sql) — foto de perfil (`profiles.avatar_url`) e políticas do bucket `avatars`. **Antes de rodar**, crie o bucket em Storage → New bucket → nome `avatars`, Public ligado.
+   - [`005_per_card_fields.sql`](supabase/migrations/005_per_card_fields.sql) — campos por card (`cards.field_ids`, `fields.default_on_new_cards`, função `remove_field_from_card`, `strip_field_values` atualizada). Faz backfill: cards existentes recebem todos os campos do board.
 5. Confirme em **Database → Replication** (ou **Realtime**) que as tabelas `cards`, `columns`, `fields`, `tags`, `card_tags` e `boards` estão publicadas em `supabase_realtime`. O script já faz isso; só confira se o Realtime está habilitado no projeto.
 
 ## 2. Criar os usuários e desabilitar o cadastro público
@@ -162,4 +164,6 @@ js/main.js                   bootstrap
 supabase/migrations/001_init.sql          schema, RLS, funções
 supabase/migrations/002_access_allowlist.sql   lista de permitidos (profiles.allowed)
 supabase/migrations/003_field_icon_status.sql  ícone por campo + status vinculado
+supabase/migrations/004_profile_avatar.sql     foto de perfil + bucket avatars
+supabase/migrations/005_per_card_fields.sql    campos por card (cards.field_ids)
 ```

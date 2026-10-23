@@ -153,7 +153,7 @@ function renderWelcome() {
   board.innerHTML = `
     <div class="welcome">
       <div class="welcome__card">
-        <span class="brand__logo"><img src="assets/lumix-logo.png" alt="Lumix BM" /></span>
+        <span class="brand__logo brand__logo--img"><img src="assets/lumix-logo.png" alt="Lumix BM" /></span>
         <h2>Bem-vindo ao Lumix BM</h2>
         <p>Você ainda não tem nenhum board. Comece com um board <b>Clientes</b> já configurado com colunas (Lead → Contato feito → Proposta → Ativo → Perdido) e campos padrão. Dá para mudar tudo depois.</p>
         <button class="btn btn--primary" id="btnFirstBoard">${icon('plus')} Criar primeiro board</button>

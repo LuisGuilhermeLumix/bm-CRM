@@ -17,7 +17,7 @@ export function renderLogin(host, { mode = 'login', onRecovered } = {}) {
       <button class="btn btn--ghost btn--icon login__theme" id="loginTheme" title="Alternar tema">${icon(currentTheme() === 'dark' ? 'sun' : 'moon')}</button>
       <div class="login__card">
         <div class="login__brand">
-          <span class="brand__logo"><img src="assets/lumix-logo.png" alt="Lumix BM" /></span>
+          <span class="brand__logo brand__logo--img"><img src="assets/lumix-logo.png" alt="Lumix BM" /></span>
           <div><h1>Lumix BM</h1><p>${esc(subtitle)}</p></div>
         </div>
         <form id="loginForm" novalidate>
@@ -108,7 +108,7 @@ export function renderSetup(host) {
     <div class="login">
       <div class="login__card setup-box">
         <div class="login__brand">
-          <span class="brand__logo"><img src="assets/lumix-logo.png" alt="Lumix BM" /></span>
+          <span class="brand__logo brand__logo--img"><img src="assets/lumix-logo.png" alt="Lumix BM" /></span>
           <div><h1>Lumix BM</h1><p>Configuração pendente</p></div>
         </div>
         <p class="muted">O arquivo <code>js/config.js</code> ainda está com os valores de exemplo.</p>

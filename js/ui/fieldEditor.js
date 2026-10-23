@@ -10,6 +10,7 @@ import {
   purgeOptionValues, purgeStatusOptionValues,
 } from '../fields.js';
 import { toggleHtml } from './common.js';
+import { fieldCardUsage } from '../cards.js';
 import { openPopover, closePopover, confirmDialog } from './dialog.js';
 import { openColorPopover } from './colorPicker.js';
 import { openIconPicker } from './iconPicker.js';
@@ -84,6 +85,7 @@ function emptyDraft() {
   return {
     name: '', type: 'text', icon: null, show_on_card: true, required: false, options: [],
     status_enabled: false, status_label: 'Status', status_options: [],
+    default_on_new_cards: true,
   };
 }
 
@@ -93,6 +95,7 @@ function draftFrom(f) {
     options: (f.options || []).map((o) => ({ ...o })),
     status_enabled: !!f.status_enabled, status_label: f.status_label || 'Status',
     status_options: (f.status_options || []).map((o) => ({ ...o })),
+    default_on_new_cards: f.default_on_new_cards !== false,
   };
 }
 
@@ -114,6 +117,7 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
     if (q('#feType') && !q('#feType').disabled) d.type = q('#feType').value;
     if (q('#feShow')) d.show_on_card = q('#feShow').checked;
     if (q('#feReq')) d.required = q('#feReq').checked;
+    if (q('#feDefault')) d.default_on_new_cards = q('#feDefault').checked;
     if (q('#feStatus')) d.status_enabled = q('#feStatus').checked;
     if (q('#feStatusLabel')) d.status_label = q('#feStatusLabel').value;
     const oe = q('[data-oe="options"]'); if (oe) readOptionsEditor(oe, d.options);
@@ -124,6 +128,7 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
     sortables.forEach((s) => { try { s.destroy(); } catch { /* ignore */ } });
     sortables = [];
     const usage = fieldId ? fieldUsage(fieldId) : 0;
+    const inCards = fieldId ? fieldCardUsage(fieldId) : 0;
     const locked = usage > 0;
     const isSel = d.type === 'select' || d.type === 'multiselect';
     const iconName = d.icon || fieldIconName({ type: d.type });
@@ -132,7 +137,7 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
       <div class="field-editor">
         <div class="field-editor__head">
           <div class="field-editor__title">${icon(fieldId ? 'pencil' : 'plus')} ${fieldId ? 'Editar campo' : 'Novo campo'}</div>
-          <div class="hint">Alterações valem para todos os cards deste board</div>
+          <div class="hint">${fieldId ? `Alterações valem para todos os cards que usam esse campo${inCards ? ` (${inCards} ${inCards === 1 ? 'card' : 'cards'})` : ''}` : 'O campo fica disponível para todos os cards deste board'}</div>
         </div>
 
         <div class="form-field">
@@ -157,6 +162,7 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
         <div class="row" style="gap:20px;flex-wrap:wrap">
           ${toggleHtml({ id: 'feShow', label: 'Mostrar no card do kanban', checked: d.show_on_card })}
           ${toggleHtml({ id: 'feReq', label: 'Obrigatório', checked: d.required })}
+          ${toggleHtml({ id: 'feDefault', label: 'Padrão em novos cards', checked: d.default_on_new_cards })}
         </div>
         ${isSel ? `
           <div class="form-field">
@@ -230,6 +236,7 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
       status_enabled: d.status_enabled,
       status_label: (d.status_label || '').trim() || 'Status',
       status_options: d.status_enabled ? clean(d.status_options) : (field?.status_options || []),
+      default_on_new_cards: d.default_on_new_cards,
     };
     const btn = pop.querySelector('#feSave');
     btn.disabled = true;
@@ -278,10 +285,11 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
     const f = getField(fieldId);
     if (!f) return;
     const usage = fieldUsage(fieldId);
+    const inCards = fieldCardUsage(fieldId);
     const ok = await confirmDialog({
-      title: 'Excluir campo',
-      message: `Excluir o campo "<b>${esc(f.name)}</b>" de todos os cards deste board?${usage ? ` O valor preenchido em <b>${usage} ${usage === 1 ? 'card' : 'cards'}</b> será apagado.` : ''}`,
-      confirmText: 'Excluir',
+      title: 'Excluir campo do board',
+      message: `Excluir o campo "<b>${esc(f.name)}</b>" do board?${inCards ? ` Ele está em uso em <b>${inCards} ${inCards === 1 ? 'card' : 'cards'}</b>` : ' Nenhum card usa esse campo'}${usage ? ` e tem valor preenchido em ${usage} ${usage === 1 ? 'card' : 'cards'}, que será apagado.` : '.'} Para tirar o campo de um card só, use a lixeira na linha do campo dentro do card.`,
+      confirmText: 'Excluir do board',
     });
     if (!ok) return;
     try {

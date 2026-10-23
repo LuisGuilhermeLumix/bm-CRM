@@ -690,9 +690,16 @@ kbd { font-family: inherit; font-size: var(--fs-xs); border: 1px solid var(--bor
   .icon-picker__grid { grid-template-columns: repeat(6, 1fr); }
 }
 
-/* Logo: a imagem preenche o quadradinho, mantendo o canto arredondado do .brand__logo */
-.brand__logo img { width: 100%; height: 100%; object-fit: contain; border-radius: inherit; display: block; }
-.brand__logo:has(img) { background: transparent; }
+/* Logo em imagem (retangular ~2:1): sem fundo/borda/padding, altura fixa e
+   largura automática. Alinhado verticalmente com o texto pelo flex do .brand. */
+.brand__logo--img { width: auto; height: 26px; padding: 0; border: none; border-radius: 0; background: transparent; }
+.brand__logo--img img { height: 100%; width: auto; object-fit: contain; display: block; }
+.shell.sidebar-collapsed .brand__logo--img { height: 22px; }
+.login__brand .brand__logo--img { height: 36px; width: auto; border-radius: 0; }
+.welcome__card .brand__logo--img { height: 48px; width: auto; border-radius: 0; }
+@media (max-width: 768px) {
+  .shell.sidebar-collapsed .brand__logo--img { height: 26px; } /* no celular a sidebar nunca fica só-ícone */
+}
 
 /* ---------- Avatar com foto ---------- */
 .avatar.avatar--img { background: var(--surface-2); overflow: hidden; padding: 0; }
@@ -720,3 +727,8 @@ kbd { font-family: inherit; font-size: var(--fs-xs); border: 1px solid var(--bor
 .profile-editor__avatar-edit .ico { width: 12px; height: 12px; }
 .profile-editor__initial { line-height: 1; }
 .profile-editor__actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+
+/* ---------- Campos por card ---------- */
+.field-row__action--danger:hover { background: var(--danger-soft); color: var(--danger); }
+.settings-row__sub .toggle { font-size: var(--fs-sm); }
+.settings-row__sub .toggle__track { transform: scale(0.85); transform-origin: left center; }

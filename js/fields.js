@@ -53,11 +53,13 @@ export async function updateField(id, patch) {
 }
 
 export async function deleteField(id) {
-  // limpa os valores (e o status) desse campo em todos os cards antes de apagar a definição
+  // limpa os valores (e o status) desse campo em todos os cards, e tira o id
+  // de cards.field_ids, antes de apagar a definição (tudo no strip_field_values)
   await run(sb.rpc('strip_field_values', { p_field_id: id }));
   await run(sb.from('fields').delete().eq('id', id));
   const skey = statusKeyOf(id);
   state.cards.forEach((c) => {
+    if (Array.isArray(c.field_ids)) c.field_ids = c.field_ids.filter((x) => x !== id);
     if (!c.values) return;
     if (id in c.values) delete c.values[id];
     if (skey in c.values) delete c.values[skey];

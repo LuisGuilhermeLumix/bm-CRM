@@ -5,9 +5,12 @@ import Sortable from 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/modular/sor
 import { icon, refreshIcons, fieldIconName } from './icons.js';
 import { esc, el, debounce, autoResize, relativeTime, formatDateTimeBR, randomPaletteColor, isTyping } from '../utils.js';
 import { state, on, getCard, getColumn, getTag, profileOf, sortedColumns, sortedFields, sortedTags, cardsInColumn } from '../state.js';
-import { updateCard, patchValues, moveCard, deleteCard, archiveCard, fetchActivity, addComment, logUpdated } from '../cards.js';
+import {
+  updateCard, patchValues, moveCard, deleteCard, archiveCard, fetchActivity, addComment, logUpdated,
+  cardFields, addFieldToCard, removeFieldFromCard, reorderCardFields,
+} from '../cards.js';
 import { addTagToCard, removeTagFromCard, createTag } from '../tags.js';
-import { isEmptyValue, reorderFields } from '../fields.js';
+import { isEmptyValue } from '../fields.js';
 import { renderFieldControl, renderStatusControl, statusKey } from './fieldInputs.js';
 import { openFieldEditor } from './fieldEditor.js';
 import { chipHtml, avatarHtml, emptyHtml } from './common.js';
@@ -71,6 +74,7 @@ export function openCardModal(cardId) {
     status: 'idle',
     seenUpdatedAt: card.updated_at,
     seenTags: JSON.stringify(card.tag_ids),
+    seenFieldIds: JSON.stringify(card.field_ids),
     stale: false,
     offs: [],
     activity: null,
@@ -102,7 +106,7 @@ export function openCardModal(cardId) {
   ctx.offs.push(on('columns', () => { renderHead(ctx); renderInfo(ctx); }));
   ctx.offs.push(on('profiles', () => { renderInfo(ctx); renderActivity(ctx); }));
 
-  root.querySelector('#cmAddField').addEventListener('click', (e) => openFieldEditor(e.currentTarget, { fieldId: null }));
+  root.querySelector('#cmAddField').addEventListener('click', (e) => openAddFieldPicker(e.currentTarget, ctx));
 
   renderHead(ctx);
   renderTitle(ctx);
@@ -214,6 +218,8 @@ function onCardsEvent(ctx) {
   renderInfo(ctx);
   const tagsSig = JSON.stringify(card.tag_ids);
   if (tagsSig !== ctx.seenTags) { ctx.seenTags = tagsSig; renderTags(ctx); }
+  const fieldsSig = JSON.stringify(card.field_ids);
+  if (fieldsSig !== ctx.seenFieldIds) { ctx.seenFieldIds = fieldsSig; syncFields(ctx); }
   if (card.updated_at !== ctx.seenUpdatedAt) {
     if (ctx.saving) { ctx.seenUpdatedAt = card.updated_at; return; } // mudança nossa
     if (typingInside(ctx) || hasPending(ctx)) { ctx.stale = true; return; }
@@ -337,7 +343,8 @@ function renderFieldRow(ctx, f) {
       <span>${esc(f.name)}</span>
       ${f.required ? '<span class="req">*</span>' : ''}
       <span class="field-row__actions">
-        <button type="button" class="field-row__action" data-edit-field title="Editar campo">${icon('pencil')}</button>
+        <button type="button" class="field-row__action" data-edit-field title="Editar campo (vale para todos os cards que usam esse campo)">${icon('pencil')}</button>
+        <button type="button" class="field-row__action field-row__action--danger" data-remove-field title="Remover deste card">${icon('trash-2')}</button>
         <span class="field-row__action field-row__grip" title="Arrastar para reordenar">${icon('grip-vertical')}</span>
       </span>
     </div>`;
@@ -357,7 +364,70 @@ function renderFieldRow(ctx, f) {
   }
   row.appendChild(wrap);
   row.querySelector('[data-edit-field]').addEventListener('click', (e) => openFieldEditor(e.currentTarget, { fieldId: f.id }));
+  row.querySelector('[data-remove-field]').addEventListener('click', () => askRemoveField(ctx, f));
   return row;
+}
+
+/** Remove o campo só deste card (a definição continua no board). */
+async function askRemoveField(ctx, f) {
+  const values = effectiveValues(ctx);
+  const hasValue = !isEmptyValue(values[f.id]) || !!values[statusKey(f.id)];
+  const ok = await confirmDialog({
+    title: 'Remover campo deste card',
+    message: `Tirar "<b>${esc(f.name)}</b>" deste card?${hasValue ? ' O valor preenchido aqui será apagado.' : ''} O campo continua existindo no board e nos outros cards.`,
+    confirmText: 'Remover',
+  });
+  if (!ok) return;
+  // descarta digitação pendente desse campo, para o flush não recriar a chave
+  delete ctx.pending.values[f.id];
+  delete ctx.pending.values[statusKey(f.id)];
+  try {
+    await removeFieldFromCard(ctx.cardId, f.id);
+  } catch (e) { toastError(e); }
+}
+
+/** Popover "+ Adicionar campo": campos do board que o card não tem, ou criar um novo. */
+function openAddFieldPicker(anchor, ctx) {
+  const pop = openPopover(anchor, `
+    <input class="input input--sm popover__search" placeholder="Buscar campo…" autocomplete="off" />
+    <div class="popover__list menu" id="afList"></div>
+    <div class="menu__sep"></div>
+    <button type="button" class="menu__item" id="afCreate">${icon('plus')}<span class="grow">Criar novo campo</span></button>`,
+    { cls: 'popover--wide' });
+  const search = pop.querySelector('input');
+  const list = pop.querySelector('#afList');
+
+  const paint = () => {
+    const card = getCard(ctx.cardId);
+    const q = search.value.trim().toLowerCase();
+    const have = new Set(card?.field_ids || []);
+    const avail = sortedFields().filter((f) => !have.has(f.id) && (!q || f.name.toLowerCase().includes(q)));
+    list.innerHTML = avail.length
+      ? avail.map((f) => `<button type="button" class="menu__item" data-add="${f.id}">${icon(fieldIconName(f))}<span class="grow truncate">${esc(f.name)}</span></button>`).join('')
+      : `<div class="popover__empty">${q ? 'Nenhum campo com esse nome.' : 'Todos os campos do board já estão neste card.'}</div>`;
+    refreshIcons();
+  };
+  list.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-add]');
+    if (!b) return;
+    closePopover(pop);
+    try { await addFieldToCard(ctx.cardId, b.dataset.add); } catch (err) { toastError(err); }
+  });
+  pop.querySelector('#afCreate').addEventListener('click', () => {
+    closePopover(pop);
+    // fluxo atual de criação; o campo novo entra no field_ids DESTE card
+    openFieldEditor(anchor, {
+      fieldId: null,
+      onSaved: (f) => { if (f && cur === ctx) addFieldToCard(ctx.cardId, f.id).catch(toastError); },
+    });
+  });
+  search.addEventListener('input', paint);
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); (list.querySelector('[data-add]') || pop.querySelector('#afCreate')).click(); }
+  });
+  paint();
+  search.focus();
+  return pop;
 }
 
 function renderFields(ctx) {
@@ -365,11 +435,13 @@ function renderFields(ctx) {
   try { ctx.fieldsSortable?.destroy(); } catch { /* ignore */ }
   ctx.fieldsSortable = null;
   host.innerHTML = '';
-  const fields = sortedFields();
+  const fields = cardFields(getCard(ctx.cardId));
   if (!fields.length) {
     host.innerHTML = emptyHtml({
       icon: 'sliders-horizontal', small: true,
-      text: 'Este board ainda não tem campos personalizados. Use "Adicionar campo" para criar o primeiro.',
+      text: sortedFields().length
+        ? 'Este card não tem campos. Use "Adicionar campo" para escolher entre os campos do board ou criar um novo.'
+        : 'Este board ainda não tem campos personalizados. Use "Adicionar campo" para criar o primeiro.',
     });
     refreshIcons();
     return;
@@ -381,8 +453,10 @@ function renderFields(ctx) {
     delay: 150, delayOnTouchOnly: true,
     onEnd: () => setTimeout(() => {
       const ids = [...host.querySelectorAll('.field-row')].map((r) => r.dataset.fieldId);
-      if (ids.join() !== sortedFields().map((f) => f.id).join()) {
-        reorderFields(ids).catch((e) => { toastError(e); renderFields(ctx); });
+      const card = getCard(ctx.cardId);
+      if (card && ids.join() !== card.field_ids.join()) {
+        ctx.seenFieldIds = JSON.stringify([...ids, ...card.field_ids.filter((id) => !ids.includes(id))]);
+        reorderCardFields(ctx.cardId, ids).catch((e) => { toastError(e); renderFields(ctx); });
       }
     }, 0),
   });
@@ -397,7 +471,7 @@ function renderFields(ctx) {
 function syncFields(ctx) {
   const host = ctx.root.querySelector('#cmFields');
   if (!host) return;
-  const fields = sortedFields();
+  const fields = cardFields(getCard(ctx.cardId));
   const hasRows = !!host.querySelector('.field-row');
   if (!fields.length || !hasRows) { renderFields(ctx); return; }
 
