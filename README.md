@@ -21,7 +21,10 @@ Stack: HTML + CSS + JavaScript vanilla (módulos ES, sem build), [Supabase](http
 3. Abra o arquivo [`supabase/migrations/001_init.sql`](supabase/migrations/001_init.sql), copie todo o conteúdo, cole no editor e clique em **Run**.
    - O script é idempotente: pode rodar de novo sem quebrar nada.
    - Ele cria as tabelas, índices, triggers, políticas de RLS, publica as tabelas no Realtime e cria as funções `move_card`, `reorder_positions`, `patch_card_values`, `strip_field_values` e `remove_field_option`.
-4. Confirme em **Database → Replication** (ou **Realtime**) que as tabelas `cards`, `columns`, `fields`, `tags`, `card_tags` e `boards` estão publicadas em `supabase_realtime`. O script já faz isso; só confira se o Realtime está habilitado no projeto.
+4. Rode, na ordem, os outros scripts da pasta `supabase/migrations/` do mesmo jeito (copiar, colar, **Run**). Todos são idempotentes:
+   - [`002_access_allowlist.sql`](supabase/migrations/002_access_allowlist.sql) — cria a coluna `profiles.allowed` e troca as políticas de RLS para "só quem está liberado acessa". Útil quando o projeto Supabase é compartilhado com outros sistemas. Edite a lista de e-mails no fim do arquivo antes de rodar.
+   - [`003_field_icon_status.sql`](supabase/migrations/003_field_icon_status.sql) — ícone por campo e status vinculado ao campo (colunas em `fields` + funções `remove_field_status_option` e `strip_field_values` atualizada).
+5. Confirme em **Database → Replication** (ou **Realtime**) que as tabelas `cards`, `columns`, `fields`, `tags`, `card_tags` e `boards` estão publicadas em `supabase_realtime`. O script já faz isso; só confira se o Realtime está habilitado no projeto.
 
 ## 2. Criar os usuários e desabilitar o cadastro público
 
@@ -35,6 +38,11 @@ O app não tem tela de cadastro. Os usuários são criados manualmente:
    ```
    Se não informar, o nome vira a parte do e-mail antes do `@`. Um trigger cria automaticamente a linha em `profiles` com esse nome e uma cor de avatar aleatória.
 4. Repita para a segunda pessoa.
+5. Se rodou a migração 002, libere o acesso de cada conta (quem não estiver liberado vê a tela "Acesso não liberado" ao entrar):
+   ```sql
+   update public.profiles set allowed = true
+    where id = (select id from auth.users where email = 'email@exemplo.com');
+   ```
 
 Para impedir que alguém crie conta por fora:
 
@@ -147,7 +155,11 @@ js/realtime.js               assinatura das tabelas do board aberto
 js/ui/kanban.js              render do board + drag-and-drop
 js/ui/cardModal.js           modal do card (autosave, tags, atividade)
 js/ui/boardSettings.js       painel Colunas / Campos / Tags / Board
+js/ui/fieldEditor.js         popover de criar/editar campo (ícone, opções, status)
+js/ui/iconPicker.js          seletor de ícones Lucide com busca
 js/ui/sidebar.js  topbar.js  login.js  dialog.js  toast.js  fieldInputs.js  colorPicker.js …
 js/main.js                   bootstrap
-supabase/migrations/001_init.sql
+supabase/migrations/001_init.sql          schema, RLS, funções
+supabase/migrations/002_access_allowlist.sql   lista de permitidos (profiles.allowed)
+supabase/migrations/003_field_icon_status.sql  ícone por campo + status vinculado
 ```

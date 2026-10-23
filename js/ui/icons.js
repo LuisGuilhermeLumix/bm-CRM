@@ -16,3 +16,23 @@ export function refreshIcons() {
   }
   document.querySelectorAll('svg[data-lucide]').forEach((s) => s.removeAttribute('data-lucide'));
 }
+
+/** Ícone padrão de cada tipo de campo (usado quando fields.icon é null). */
+export const FIELD_TYPE_ICONS = {
+  text: 'type',
+  textarea: 'align-left',
+  number: 'hash',
+  currency: 'banknote',
+  date: 'calendar',
+  select: 'list',
+  multiselect: 'list-checks',
+  checkbox: 'check-square',
+  url: 'link',
+  email: 'mail',
+  phone: 'phone',
+};
+
+/** Nome do ícone efetivo de um campo: o escolhido pelo usuário ou o padrão do tipo. */
+export function fieldIconName(field) {
+  return field?.icon || FIELD_TYPE_ICONS[field?.type] || 'type';
+}

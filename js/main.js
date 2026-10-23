@@ -1,7 +1,7 @@
 // Bootstrap: configuração, autenticação, shell e atalhos
 import { isConfigured } from './supabase.js';
 import { state, on, emit, sortedBoards } from './state.js';
-import { getSession, onAuthChange, loadProfiles } from './auth.js';
+import { getSession, onAuthChange, loadProfiles, signOut } from './auth.js';
 import { loadBoards, openBoard, closeBoard, createFirstBoard, LAST_BOARD_KEY } from './boards.js';
 import { subscribeGlobal, unsubscribeAll } from './realtime.js';
 import { fetchColumns } from './columns.js';
@@ -11,7 +11,7 @@ import { fetchCards } from './cards.js';
 import { storage, isTyping } from './utils.js';
 import { icon, refreshIcons } from './ui/icons.js';
 import { initTheme } from './ui/theme.js';
-import { renderLogin, renderSetup } from './ui/login.js';
+import { renderLogin, renderSetup, renderNoAccess } from './ui/login.js';
 import { initSidebar } from './ui/sidebar.js';
 import { initTopbar, newCardFlow } from './ui/topbar.js';
 import { initKanban } from './ui/kanban.js';
@@ -93,11 +93,25 @@ async function startApp(session) {
   refreshIcons();
 
   try {
-    await Promise.all([loadProfiles(), loadBoards()]);
+    await loadProfiles();
   } catch (e) {
     toastError(e);
   }
   if (!started) return; // deslogou no meio
+
+  // Lista de permitidos (migração 002): logou, mas profiles.allowed = false.
+  // Se a coluna não existir (migração não aplicada), allowed vem undefined e passa.
+  if (state.profile && state.profile.allowed === false) {
+    renderNoAccess(host, { email: state.user.email, onSignOut: () => signOut().catch(toastError) });
+    return;
+  }
+
+  try {
+    await loadBoards();
+  } catch (e) {
+    toastError(e);
+  }
+  if (!started) return;
 
   initSidebar();
   initTopbar();

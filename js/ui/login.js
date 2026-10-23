@@ -117,3 +117,21 @@ export function renderSetup(host) {
     </div>`;
   refreshIcons();
 }
+
+/** Usuário autenticado, mas sem acesso ao CRM (profiles.allowed = false). */
+export function renderNoAccess(host, { email = '', onSignOut } = {}) {
+  host.innerHTML = `
+    <div class="login">
+      <div class="login__card setup-box">
+        <div class="login__brand">
+          <span class="brand__logo">${icon('lock')}</span>
+          <div><h1>Lumix CRM</h1><p>Acesso não liberado</p></div>
+        </div>
+        <p class="muted">A conta <b>${esc(email)}</b> existe, mas ainda não foi liberada para este CRM.</p>
+        <p class="muted">Peça a quem administra o Supabase para marcar <code>allowed = true</code> no seu perfil (tabela <code>profiles</code>) e entre de novo.</p>
+        <button class="btn btn--block" id="noAccessOut">${icon('log-out')} Sair</button>
+      </div>
+    </div>`;
+  refreshIcons();
+  host.querySelector('#noAccessOut').addEventListener('click', () => onSignOut?.());
+}

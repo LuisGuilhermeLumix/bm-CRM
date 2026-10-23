@@ -149,7 +149,7 @@ function addColumnHtml() {
 
 function cardHtml(card) {
   const tags = (card.tag_ids || []).map(getTag).filter(Boolean);
-  const fields = sortedFields().filter((f) => f.show_on_card).map((f) => fieldSummaryHtml(f, card.values?.[f.id])).filter(Boolean);
+  const fields = sortedFields().filter((f) => f.show_on_card).map((f) => fieldSummaryHtml(f, card.values)).filter(Boolean);
   const creator = profileOf(card.created_by);
   return `
   <article class="card" data-card-id="${card.id}">

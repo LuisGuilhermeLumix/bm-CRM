@@ -179,14 +179,30 @@ export function valueToSearchText(field, value) {
   }
 }
 
+/** Rótulo da opção de status escolhida para o campo (ou ''). */
+export function statusLabelOf(field, values) {
+  if (!field.status_enabled) return '';
+  const id = values?.[`${field.id}:status`];
+  return id ? (field.status_options || []).find((o) => o.id === id)?.label || '' : '';
+}
+
 export function cardMatchesFilters(card) {
-  const { q, tagIds } = state.filters;
+  const { q, tagIds, statusKeys = [] } = state.filters;
   if (tagIds.length && !tagIds.some((t) => card.tag_ids?.includes(t))) return false;
+  // statusKeys: "<fieldId>:<optionId>" — basta uma bater (OU), como nas tags
+  if (statusKeys.length && !statusKeys.some((k) => {
+    const i = k.indexOf(':');
+    const fieldId = k.slice(0, i), optionId = k.slice(i + 1);
+    return card.values?.[`${fieldId}:status`] === optionId;
+  })) return false;
   if (q) {
     const needle = q.trim().toLowerCase();
     if (needle) {
       const parts = [card.title, card.description];
-      for (const f of state.fields) parts.push(valueToSearchText(f, card.values?.[f.id]));
+      for (const f of state.fields) {
+        parts.push(valueToSearchText(f, card.values?.[f.id]));
+        parts.push(statusLabelOf(f, card.values)); // "cancelada" acha cards com esse status
+      }
       for (const tid of card.tag_ids || []) parts.push(getTag(tid)?.name);
       const hay = parts.filter(Boolean).join(' \n ').toLowerCase();
       if (!hay.includes(needle)) return false;

@@ -1,19 +1,18 @@
 // Painel lateral "Configurar board": Colunas / Campos / Tags / Board
 import Sortable from 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/modular/sortable.esm.js';
-import { icon, refreshIcons } from './icons.js';
-import { esc, el, uid, randomPaletteColor, isTyping, relativeTime } from '../utils.js';
+import { icon, refreshIcons, fieldIconName } from './icons.js';
+import { esc, el, randomPaletteColor, isTyping, relativeTime } from '../utils.js';
 import { state, on, getBoard, getColumn, getField, getTag, sortedColumns, sortedFields, sortedTags } from '../state.js';
 import { updateBoard, deleteBoard } from '../boards.js';
 import { createColumn, updateColumn, deleteColumn, reorderColumns } from '../columns.js';
-import {
-  FIELD_TYPES, fieldTypeInfo, createField, updateField, deleteField, reorderFields, fieldUsage, optionUsage, purgeOptionValues,
-} from '../fields.js';
+import { fieldTypeInfo, deleteField, reorderFields, fieldUsage } from '../fields.js';
 import { createTag, updateTag, deleteTag, tagUsage } from '../tags.js';
 import { archiveCard, deleteCard } from '../cards.js';
-import { chipHtml, emptyHtml, toggleHtml } from './common.js';
+import { chipHtml, emptyHtml } from './common.js';
 import { colorGridHtml, bindColorGrid, openColorPopover } from './colorPicker.js';
-import { iconGridHtml, bindIconGrid } from './boardForm.js';
-import { openDialog, confirmDialog, pushClosable, removeClosable } from './dialog.js';
+import { openIconPicker } from './iconPicker.js';
+import { openFieldEditor } from './fieldEditor.js';
+import { openDialog, confirmDialog, pushClosable, removeClosable, closeAllPopovers } from './dialog.js';
 import { toast, toastError, toastSuccess } from './toast.js';
 
 let ctx = null;
@@ -30,7 +29,7 @@ export function isBoardSettingsOpen() { return !!ctx; }
 
 export function openBoardSettings(tab = 'columns') {
   if (!getBoard()) return;
-  if (ctx) { ctx.tab = tab; ctx.fieldForm = null; renderTabs(); renderBody(); return; }
+  if (ctx) { ctx.tab = tab; renderTabs(); renderBody(); return; }
 
   const root = el(`
     <div>
@@ -47,7 +46,7 @@ export function openBoardSettings(tab = 'columns') {
   document.getElementById('layers').appendChild(root);
 
   ctx = {
-    root, tab, fieldForm: null, stale: false, offs: [], timer: null,
+    root, tab, stale: false, offs: [], timer: null,
     newColColor: randomPaletteColor(), newTagColor: randomPaletteColor(),
   };
   ctx.onEsc = () => closeBoardSettings();
@@ -71,6 +70,7 @@ export function closeBoardSettings() {
   ctx = null;
   c.offs.forEach((off) => off());
   removeClosable(c.onEsc);
+  closeAllPopovers();
   destroySortables();
   c.root.remove();
 }
@@ -100,7 +100,6 @@ function renderTabs() {
   refreshIcons();
   host.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
     ctx.tab = b.dataset.tab;
-    ctx.fieldForm = null;
     renderTabs();
     renderBody();
   }));
@@ -230,22 +229,22 @@ async function askDeleteColumn(colId) {
 }
 
 // ============================================================================
-// CAMPOS
+// CAMPOS — a edição em si acontece no popover compartilhado (fieldEditor.js)
 // ============================================================================
 function renderFields(body) {
   const fields = sortedFields();
-  const form = ctx.fieldForm;
   body.innerHTML = `
     ${fields.length ? `<div class="settings-list" id="setFields">
       ${fields.map((f) => {
         const t = fieldTypeInfo(f.type);
         const usage = fieldUsage(f.id);
-        const editing = form && form.fieldId === f.id;
+        const nOpts = (f.options || []).length;
+        const nStatus = (f.status_options || []).length;
         return `
         <div class="settings-row settings-row--col" data-id="${f.id}">
           <div class="settings-row__main">
             <span class="handle" title="Arrastar para reordenar">${icon('grip-vertical')}</span>
-            ${icon(t.icon)}
+            ${icon(fieldIconName(f))}
             <span class="settings-row__name">${esc(f.name)}</span>
             <span class="settings-row__icons">
               <button type="button" class="btn btn--ghost btn--icon btn--sm" data-edit="${f.id}" title="Editar">${icon('pencil')}</button>
@@ -256,18 +255,18 @@ function renderFields(body) {
             <span>${t.label}</span>
             ${f.show_on_card ? chipHtml('No card', '#6366f1') : ''}
             ${f.required ? chipHtml('Obrigatório', '#ef4444') : ''}
-            ${(f.type === 'select' || f.type === 'multiselect') ? `<span>· ${(f.options || []).length} ${(f.options || []).length === 1 ? 'opção' : 'opções'}</span>` : ''}
+            ${f.status_enabled ? chipHtml(`${f.status_label || 'Status'} · ${nStatus} ${nStatus === 1 ? 'opção' : 'opções'}`, '#06b6d4') : ''}
+            ${(f.type === 'select' || f.type === 'multiselect') ? `<span>· ${nOpts} ${nOpts === 1 ? 'opção' : 'opções'}</span>` : ''}
             ${usage ? `<span>· com valor em ${usage} ${usage === 1 ? 'card' : 'cards'}</span>` : ''}
           </div>
-          ${editing ? `<div style="width:100%;padding-top:6px">${fieldFormHtml()}</div>` : ''}
         </div>`;
       }).join('')}
-    </div>` : (form ? '' : emptyHtml({
+    </div>` : emptyHtml({
       icon: 'sliders-horizontal', title: 'Nenhum campo personalizado',
       text: 'Campos aparecem no modal de cada card. Ex.: Telefone, Empresa, Valor, Próximo contato.',
-    }))}
-    ${form && !form.fieldId ? fieldFormHtml() : `<button type="button" class="btn" id="newFieldBtn">${icon('plus')} Novo campo</button>`}
-    <p class="hint">Marque "Mostrar no card" para o valor aparecer resumido no kanban. Arraste pelo ícone para mudar a ordem no modal.</p>`;
+    })}
+    <div><button type="button" class="btn" id="newFieldBtn">${icon('plus')} Novo campo</button></div>
+    <p class="hint">Os campos também podem ser editados direto no card (lápis ao lado do nome). Arraste pelo ícone para mudar a ordem.</p>`;
 
   const list = body.querySelector('#setFields');
   if (list) {
@@ -279,8 +278,8 @@ function renderFields(body) {
       }, 0),
     }));
   }
-  body.querySelector('#newFieldBtn')?.addEventListener('click', () => openFieldForm(null));
-  body.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => openFieldForm(b.dataset.edit)));
+  body.querySelector('#newFieldBtn').addEventListener('click', (e) => openFieldEditor(e.currentTarget, { fieldId: null }));
+  body.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => openFieldEditor(b, { fieldId: b.dataset.edit })));
   body.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
     const f = getField(b.dataset.del);
     if (!f) return;
@@ -293,151 +292,6 @@ function renderFields(body) {
     if (!ok) return;
     try { await deleteField(f.id); toastSuccess('Campo excluído.'); } catch (e) { toastError(e); }
   }));
-  if (form) bindFieldForm(body);
-}
-
-function openFieldForm(fieldId) {
-  const f = fieldId ? getField(fieldId) : null;
-  ctx.fieldForm = {
-    fieldId,
-    draft: f
-      ? { name: f.name, type: f.type, show_on_card: f.show_on_card, required: f.required, options: (f.options || []).map((o) => ({ ...o })) }
-      : { name: '', type: 'text', show_on_card: true, required: false, options: [] },
-  };
-  renderBody();
-  setTimeout(() => ctx?.root.querySelector('#ffName')?.focus(), 30);
-}
-
-function fieldFormHtml() {
-  const { fieldId, draft: d } = ctx.fieldForm;
-  const usage = fieldId ? fieldUsage(fieldId) : 0;
-  const locked = usage > 0; // campo com valores não muda de tipo
-  const isSel = d.type === 'select' || d.type === 'multiselect';
-  return `
-  <div class="field-form" id="fieldForm">
-    <div class="field-form__title">${icon(fieldId ? 'pencil' : 'plus')} ${fieldId ? 'Editar campo' : 'Novo campo'}</div>
-    <div class="form-row">
-      <div class="form-field"><label>Nome</label><input class="input" id="ffName" value="${esc(d.name)}" placeholder="Ex.: Telefone" autocomplete="off" /></div>
-      <div class="form-field"><label>Tipo</label>
-        <select class="select" id="ffType" ${locked ? 'disabled' : ''}>
-          ${FIELD_TYPES.map((t) => `<option value="${t.value}" ${t.value === d.type ? 'selected' : ''}>${t.label}</option>`).join('')}
-        </select>
-      </div>
-    </div>
-    ${locked ? `<div class="info-box info-box--warn">${icon('info')}<span>Este campo já tem valor em ${usage} ${usage === 1 ? 'card' : 'cards'}, por isso o tipo não pode ser alterado (os valores ficariam inconsistentes). Se precisar de outro tipo, crie um campo novo.</span></div>` : ''}
-    <div class="row" style="gap:20px;flex-wrap:wrap">
-      ${toggleHtml({ id: 'ffShow', label: 'Mostrar no card', checked: d.show_on_card })}
-      ${toggleHtml({ id: 'ffReq', label: 'Obrigatório', checked: d.required })}
-    </div>
-    ${isSel ? `
-      <div class="form-field">
-        <label>Opções</label>
-        <div class="options-editor" id="ffOptions">
-          ${d.options.map((o) => `
-            <div class="option-row" data-opt-id="${esc(o.id)}">
-              <span class="handle">${icon('grip-vertical')}</span>
-              <button type="button" class="color-btn color-btn--sm" data-opt-color="${esc(o.id)}" style="--c:${esc(o.color)}" title="Cor"></button>
-              <input class="input input--sm" value="${esc(o.label)}" placeholder="Nome da opção" autocomplete="off" />
-              <button type="button" class="btn btn--ghost btn--icon btn--sm" data-opt-rm="${esc(o.id)}" title="Remover">${icon('x')}</button>
-            </div>`).join('')}
-          ${!d.options.length ? '<p class="hint">Nenhuma opção ainda.</p>' : ''}
-        </div>
-        <div><button type="button" class="btn btn--sm" id="ffAddOpt">${icon('plus', 'ico--sm')} Adicionar opção</button></div>
-      </div>` : ''}
-    <div class="dialog__actions">
-      <button type="button" class="btn btn--ghost" id="ffCancel">Cancelar</button>
-      <button type="button" class="btn btn--primary" id="ffSave">${fieldId ? 'Salvar' : 'Criar campo'}</button>
-    </div>
-  </div>`;
-}
-
-/** Copia o que está nos inputs do form para o draft (antes de re-renderizar). */
-function readFieldForm() {
-  const d = ctx.fieldForm.draft;
-  const r = ctx.root;
-  const name = r.querySelector('#ffName'); if (name) d.name = name.value;
-  const type = r.querySelector('#ffType'); if (type) d.type = type.value;
-  const show = r.querySelector('#ffShow'); if (show) d.show_on_card = show.checked;
-  const req = r.querySelector('#ffReq'); if (req) d.required = req.checked;
-  const rows = [...r.querySelectorAll('[data-opt-id]')];
-  if (rows.length) {
-    rows.forEach((row) => { const o = d.options.find((x) => x.id === row.dataset.optId); if (o) o.label = row.querySelector('input').value; });
-    const order = rows.map((x) => x.dataset.optId);
-    d.options.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-  }
-}
-
-function bindFieldForm(body) {
-  const form = body.querySelector('#fieldForm');
-  if (!form) return;
-  const d = ctx.fieldForm.draft;
-
-  form.querySelector('#ffType').addEventListener('change', () => { readFieldForm(); renderBody(); });
-  form.querySelector('#ffCancel').addEventListener('click', () => { ctx.fieldForm = null; renderBody(); });
-  form.querySelector('#ffName').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); form.querySelector('#ffSave').click(); } });
-
-  const opts = form.querySelector('#ffOptions');
-  if (opts) {
-    sortables.push(new Sortable(opts, { handle: '.handle', draggable: '.option-row', animation: 150, ghostClass: 'sortable-ghost', onEnd: () => readFieldForm() }));
-    form.querySelector('#ffAddOpt').addEventListener('click', () => {
-      readFieldForm();
-      d.options.push({ id: uid(), label: '', color: randomPaletteColor() });
-      renderBody();
-      const rows = ctx.root.querySelectorAll('[data-opt-id] input');
-      rows[rows.length - 1]?.focus();
-    });
-    opts.querySelectorAll('[data-opt-rm]').forEach((b) => b.addEventListener('click', () => {
-      readFieldForm();
-      d.options = d.options.filter((o) => o.id !== b.dataset.optRm);
-      renderBody();
-    }));
-    opts.querySelectorAll('[data-opt-color]').forEach((b) => b.addEventListener('click', () => {
-      const o = d.options.find((x) => x.id === b.dataset.optColor);
-      openColorPopover(b, o?.color, (hex) => { if (o) o.color = hex; b.style.setProperty('--c', hex); });
-    }));
-    opts.querySelectorAll('[data-opt-id] input').forEach((inp) => inp.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); form.querySelector('#ffAddOpt').click(); }
-    }));
-  }
-
-  form.querySelector('#ffSave').addEventListener('click', async () => {
-    readFieldForm();
-    const { fieldId } = ctx.fieldForm;
-    const name = d.name.trim();
-    if (!name) { form.querySelector('#ffName').focus(); toast('Dê um nome ao campo.', { type: 'warning' }); return; }
-    const isSel = d.type === 'select' || d.type === 'multiselect';
-    const options = isSel ? d.options.map((o) => ({ ...o, label: o.label.trim() })).filter((o) => o.label) : [];
-    const payload = { name, type: d.type, show_on_card: d.show_on_card, required: d.required, options };
-    const btn = form.querySelector('#ffSave');
-    btn.disabled = true;
-    try {
-      if (!fieldId) {
-        await createField(state.boardId, payload);
-        toastSuccess('Campo criado.');
-      } else {
-        const f = getField(fieldId);
-        if (fieldUsage(fieldId) > 0) payload.type = f.type; // tipo travado
-        const removed = (f.options || []).filter((o) => !options.some((x) => x.id === o.id));
-        const inUse = removed.map((o) => ({ o, n: optionUsage(fieldId, o.id) })).filter((x) => x.n > 0);
-        if (inUse.length) {
-          const ok = await confirmDialog({
-            title: 'Remover opções em uso?',
-            message: inUse.map((x) => `"<b>${esc(x.o.label)}</b>" é usada em ${x.n} ${x.n === 1 ? 'card' : 'cards'}`).join('. ') + '. O valor será removido desses cards.',
-            confirmText: 'Remover e salvar',
-          });
-          if (!ok) { btn.disabled = false; return; }
-          for (const x of inUse) await purgeOptionValues(fieldId, x.o.id);
-        }
-        await updateField(fieldId, payload);
-        toastSuccess('Campo salvo.');
-      }
-      ctx.fieldForm = null;
-      renderBody();
-    } catch (e) {
-      toastError(e);
-      btn.disabled = false;
-    }
-  });
 }
 
 // ============================================================================
@@ -515,6 +369,7 @@ function renderBoardTab(body) {
   const board = getBoard();
   if (!board) return;
   const archived = state.cards.filter((c) => c.archived).sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
+  const boardIcon = board.icon || 'kanban';
   body.innerHTML = `
     <div class="form-field">
       <label>Nome do board</label>
@@ -526,7 +381,7 @@ function renderBoardTab(body) {
     </div>
     <div class="form-field">
       <label>Ícone</label>
-      ${iconGridHtml(board.icon || 'kanban')}
+      <div><button type="button" class="btn icon-btn" id="bIcon">${icon(boardIcon)}<span>${esc(boardIcon)}</span>${icon('chevron-down', 'ico--sm')}</button></div>
     </div>
     <div class="section">
       <div class="section__title">${icon('archive')} Cards arquivados (${archived.length})</div>
@@ -564,7 +419,11 @@ function renderBoardTab(body) {
     wireColor();
   });
   wireColor();
-  bindIconGrid(body, (n) => updateBoard(board.id, { icon: n }).catch(toastError));
+  body.querySelector('#bIcon').addEventListener('click', (e) => {
+    openIconPicker(e.currentTarget, getBoard()?.icon || 'kanban', (name) => {
+      updateBoard(board.id, { icon: name }).catch(toastError);
+    }, { allowDefault: false });
+  });
 
   body.querySelectorAll('[data-restore]').forEach((b) => b.addEventListener('click', async () => {
     try { await archiveCard(b.dataset.restore, false); toastSuccess('Card restaurado.'); } catch (e) { toastError(e); }

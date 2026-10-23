@@ -640,3 +640,52 @@ kbd { font-family: inherit; font-size: var(--fs-xs); border: 1px solid var(--bor
 @media (max-width: 768px) {
   .btn-menu { display: inline-flex; }
 }
+
+/* ---------- Campos: ações na linha, chip de status ---------- */
+.field-row__label { position: relative; }
+.field-row__actions { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; flex-shrink: 0; opacity: 0; transition: opacity var(--transition); }
+.field-row:hover .field-row__actions, .field-row:focus-within .field-row__actions { opacity: 1; }
+.field-row__action {
+  display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: var(--radius-sm);
+  color: var(--text-3); background: transparent; border: none; cursor: pointer; transition: background var(--transition), color var(--transition);
+}
+.field-row__action:hover { background: var(--surface-hover); color: var(--text); }
+.field-row__action .ico { width: 13px; height: 13px; color: inherit; }
+.field-row__grip { cursor: grab; }
+.field-row__grip:active { cursor: grabbing; }
+.field-row.sortable-ghost { opacity: 0.4; }
+.field-row__control-wrap { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.status-chip { cursor: pointer; max-width: 100%; align-self: flex-start; margin-left: 6px; gap: 6px; }
+.status-chip .ico { width: 12px; height: 12px; opacity: 0.7; }
+.status-chip:hover { filter: brightness(1.1); }
+.card__field .chip { margin-left: auto; flex-shrink: 0; }
+#cmFieldsFoot { display: flex; }
+
+/* ---------- Editor de campo (popover) ---------- */
+.popover--editor { width: 460px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow-y: auto; padding: 14px; }
+.field-editor { display: flex; flex-direction: column; gap: 14px; }
+.field-editor__head { display: flex; flex-direction: column; gap: 2px; }
+.field-editor__title { font-size: var(--fs-md); font-weight: var(--fw-semibold); display: flex; align-items: center; gap: 8px; }
+.field-editor__title .ico { color: var(--accent); }
+.field-editor__section { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid var(--border); }
+.field-editor__foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.icon-btn { display: inline-flex; align-items: center; gap: 8px; width: 100%; justify-content: flex-start; }
+.icon-btn > span { flex: 1; min-width: 0; text-align: left; font-weight: var(--fw-medium); }
+.icon-btn .ico:last-child { color: var(--text-3); margin-left: auto; }
+
+/* ---------- Seletor de ícones (popover) ---------- */
+.popover--icons { width: 330px; max-width: calc(100vw - 16px); }
+.icon-picker__grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; max-height: 240px; overflow-y: auto; padding: 2px; }
+.icon-picker__grid button {
+  aspect-ratio: 1; border-radius: var(--radius-sm); display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid transparent; color: var(--text-2); transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+.icon-picker__grid button:hover { background: var(--surface-hover); color: var(--text); }
+.icon-picker__grid button.is-selected { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.icon-picker__grid .popover__empty { grid-column: 1 / -1; }
+
+@media (max-width: 768px) {
+  .field-row__actions { opacity: 1; }
+  .popover--editor { padding: 12px; }
+  .icon-picker__grid { grid-template-columns: repeat(6, 1fr); }
+}

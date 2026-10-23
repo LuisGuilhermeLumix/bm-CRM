@@ -1,22 +1,26 @@
-// CRUD de campos personalizados
+// CRUD de campos personalizados (+ ícone próprio e status vinculado)
 import { sb, run } from './supabase.js';
 import { state, emit, upsertField, removeField, getField } from './state.js';
+import { FIELD_TYPE_ICONS } from './ui/icons.js';
 
 export const FIELD_TYPES = [
-  { value: 'text',        label: 'Texto curto',      icon: 'type' },
-  { value: 'textarea',    label: 'Texto longo',      icon: 'align-left' },
-  { value: 'number',      label: 'Número',           icon: 'hash' },
-  { value: 'currency',    label: 'Moeda (R$)',       icon: 'banknote' },
-  { value: 'date',        label: 'Data',             icon: 'calendar' },
-  { value: 'select',      label: 'Seleção única',    icon: 'list' },
-  { value: 'multiselect', label: 'Seleção múltipla', icon: 'list-checks' },
-  { value: 'checkbox',    label: 'Checkbox',         icon: 'square-check' },
-  { value: 'url',         label: 'Link (URL)',       icon: 'link' },
-  { value: 'email',       label: 'E-mail',           icon: 'mail' },
-  { value: 'phone',       label: 'Telefone',         icon: 'phone' },
-];
+  { value: 'text',        label: 'Texto curto' },
+  { value: 'textarea',    label: 'Texto longo' },
+  { value: 'number',      label: 'Número' },
+  { value: 'currency',    label: 'Moeda (R$)' },
+  { value: 'date',        label: 'Data' },
+  { value: 'select',      label: 'Seleção única' },
+  { value: 'multiselect', label: 'Seleção múltipla' },
+  { value: 'checkbox',    label: 'Checkbox' },
+  { value: 'url',         label: 'Link (URL)' },
+  { value: 'email',       label: 'E-mail' },
+  { value: 'phone',       label: 'Telefone' },
+].map((t) => ({ ...t, icon: FIELD_TYPE_ICONS[t.value] }));
 
 export const fieldTypeInfo = (type) => FIELD_TYPES.find((t) => t.value === type) || FIELD_TYPES[0];
+
+/** Chave em cards.values onde fica o status vinculado ao campo. */
+export const statusKeyOf = (fieldId) => `${fieldId}:status`;
 
 export async function fetchFields(boardId) {
   return run(sb.from('fields').select('*').eq('board_id', boardId).order('position').order('created_at'));
@@ -49,10 +53,15 @@ export async function updateField(id, patch) {
 }
 
 export async function deleteField(id) {
-  // limpa os valores desse campo em todos os cards antes de apagar a definição
+  // limpa os valores (e o status) desse campo em todos os cards antes de apagar a definição
   await run(sb.rpc('strip_field_values', { p_field_id: id }));
   await run(sb.from('fields').delete().eq('id', id));
-  state.cards.forEach((c) => { if (c.values && id in c.values) { delete c.values[id]; } });
+  const skey = statusKeyOf(id);
+  state.cards.forEach((c) => {
+    if (!c.values) return;
+    if (id in c.values) delete c.values[id];
+    if (skey in c.values) delete c.values[skey];
+  });
   removeField(id);
   emit('fields');
   emit('cards');
@@ -69,7 +78,7 @@ export function isEmptyValue(v) {
   return v == null || v === '' || v === false || (Array.isArray(v) && v.length === 0);
 }
 
-/** Quantos cards do board têm valor nesse campo. */
+/** Quantos cards do board têm valor nesse campo (o status não conta). */
 export function fieldUsage(fieldId) {
   return state.cards.filter((c) => !isEmptyValue(c.values?.[fieldId])).length;
 }
@@ -82,6 +91,12 @@ export function optionUsage(fieldId, optionId) {
   }).length;
 }
 
+/** Quantos cards usam uma opção de status do campo. */
+export function statusOptionUsage(fieldId, optionId) {
+  const skey = statusKeyOf(fieldId);
+  return state.cards.filter((c) => c.values?.[skey] === optionId).length;
+}
+
 /** Tira uma opção dos valores de todos os cards (servidor + estado local). */
 export async function purgeOptionValues(fieldId, optionId) {
   await run(sb.rpc('remove_field_option', { p_field_id: fieldId, p_option_id: optionId }));
@@ -89,6 +104,16 @@ export async function purgeOptionValues(fieldId, optionId) {
     const v = c.values?.[fieldId];
     if (Array.isArray(v)) c.values[fieldId] = v.filter((x) => x !== optionId);
     else if (v === optionId) delete c.values[fieldId];
+  });
+  emit('cards');
+}
+
+/** Tira uma opção de status dos cards que a usam (servidor + estado local). */
+export async function purgeStatusOptionValues(fieldId, optionId) {
+  await run(sb.rpc('remove_field_status_option', { p_field_id: fieldId, p_option_id: optionId }));
+  const skey = statusKeyOf(fieldId);
+  state.cards.forEach((c) => {
+    if (c.values?.[skey] === optionId) delete c.values[skey];
   });
   emit('cards');
 }

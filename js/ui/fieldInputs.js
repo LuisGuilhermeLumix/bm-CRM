@@ -1,20 +1,24 @@
 // Renderização dos campos personalizados: resumo no card do kanban e
-// controles de edição no modal, um para cada tipo.
-import { icon, refreshIcons } from './icons.js';
+// controles de edição no modal (um para cada tipo), mais o chip de status.
+import { icon, refreshIcons, fieldIconName, FIELD_TYPE_ICONS } from './icons.js';
 import { chipHtml } from './common.js';
 import {
   esc, el, formatCurrency, formatNumber, parseNumber, formatDateBR, dateDistance,
   whatsappLink, normalizeUrl, hostnameOf, autoResize, uid, randomPaletteColor,
 } from '../utils.js';
-import { fieldTypeInfo, updateField, isEmptyValue } from '../fields.js';
+import { updateField, isEmptyValue } from '../fields.js';
 import { getField } from '../state.js';
-import { openPopover, closePopover } from './dialog.js';
+import { openPopover, closePopover, openMenu } from './dialog.js';
 import { toastError } from './toast.js';
 
-export const fieldIcon = (type) => fieldTypeInfo(type).icon;
+export const fieldIcon = (type) => FIELD_TYPE_ICONS[type] || 'type';
+export const statusKey = (fieldId) => `${fieldId}:status`;
 
 export function optionById(field, id) {
   return (field?.options || []).find((o) => o.id === id) || null;
+}
+export function statusOptionById(field, id) {
+  return (field?.status_options || []).find((o) => o.id === id) || null;
 }
 
 const PLACEHOLDERS = {
@@ -23,33 +27,43 @@ const PLACEHOLDERS = {
 };
 
 // ----------------------------------------------------------------------------
-// Resumo compacto para o card no kanban. Retorna '' quando vazio.
+// Resumo compacto para o card no kanban.
+// fieldSummaryHtml(field, values) — `values` é o jsonb inteiro do card, porque
+// o status mora na chave "<field_id>:status". Retorna '' quando não há nada.
 // ----------------------------------------------------------------------------
-export function fieldSummaryHtml(field, value) {
-  if (isEmptyValue(value)) return '';
-  const ic = icon(fieldIcon(field.type));
-  const wrap = (inner, cls = '') => `<div class="card__field ${cls}" title="${esc(field.name)}">${ic}${inner}</div>`;
+function summaryValue(field, value) {
+  if (isEmptyValue(value)) return null;
   switch (field.type) {
     case 'select': {
       const o = optionById(field, value);
-      return o ? wrap(`<span class="chips">${chipHtml(o.label, o.color, { small: true })}</span>`) : '';
+      return o ? { html: `<span class="chips">${chipHtml(o.label, o.color, { small: true })}</span>` } : null;
     }
     case 'multiselect': {
       const os = (Array.isArray(value) ? value : []).map((id) => optionById(field, id)).filter(Boolean);
-      return os.length ? wrap(`<span class="chips">${os.map((o) => chipHtml(o.label, o.color, { small: true })).join('')}</span>`) : '';
+      return os.length ? { html: `<span class="chips">${os.map((o) => chipHtml(o.label, o.color, { small: true })).join('')}</span>` } : null;
     }
-    case 'checkbox':
-      return value ? `<div class="card__field" title="${esc(field.name)}">${icon('square-check')}<span>${esc(field.name)}</span></div>` : '';
-    case 'currency': return wrap(`<span>${esc(formatCurrency(value))}</span>`);
-    case 'number': return wrap(`<span>${esc(formatNumber(value))}</span>`);
+    case 'checkbox': return value ? { html: `<span>${esc(field.name)}</span>` } : null;
+    case 'currency': return { html: `<span>${esc(formatCurrency(value))}</span>` };
+    case 'number': return { html: `<span>${esc(formatNumber(value))}</span>` };
     case 'date': {
       const d = dateDistance(value);
-      return wrap(`<span>${esc(formatDateBR(value))}${d ? ` · ${esc(d.label)}` : ''}</span>`, d?.overdue ? 'is-overdue' : '');
+      return { html: `<span>${esc(formatDateBR(value))}${d ? ` · ${esc(d.label)}` : ''}</span>`, cls: d?.overdue ? 'is-overdue' : '' };
     }
-    case 'url': return wrap(`<span>${esc(hostnameOf(value))}</span>`);
-    case 'textarea': return wrap(`<span>${esc(String(value).split('\n')[0])}</span>`);
-    default: return wrap(`<span>${esc(String(value))}</span>`);
+    case 'url': return { html: `<span>${esc(hostnameOf(value))}</span>` };
+    case 'textarea': return { html: `<span>${esc(String(value).split('\n')[0])}</span>` };
+    default: return { html: `<span>${esc(String(value))}</span>` };
   }
+}
+
+export function fieldSummaryHtml(field, values) {
+  const v = summaryValue(field, values?.[field.id]);
+  const st = field.status_enabled ? statusOptionById(field, values?.[statusKey(field.id)]) : null;
+  if (!v && !st) return '';
+  return `<div class="card__field ${v?.cls || ''}" title="${esc(field.name)}${st ? ` · ${esc(field.status_label || 'Status')}: ${esc(st.label)}` : ''}">
+    ${icon(fieldIconName(field))}
+    ${v ? v.html : `<span class="muted">${esc(field.name)}</span>`}
+    ${st ? chipHtml(st.label, st.color, { small: true }) : ''}
+  </div>`;
 }
 
 // ----------------------------------------------------------------------------
@@ -240,6 +254,48 @@ function multiControl(field, value, onChange) {
 }
 
 // ----------------------------------------------------------------------------
+// Chip de status vinculado ao campo (valor em "<field_id>:status")
+// ----------------------------------------------------------------------------
+export function renderStatusControl(field, value, onChange) {
+  const btn = el('<button type="button" class="status-chip chip" title="Status"></button>');
+  let current = value || null;
+  const live = () => getField(field.id) || field;
+  const paint = () => {
+    const f = live();
+    const o = statusOptionById(f, current);
+    btn.title = f.status_label || 'Status';
+    if (o) {
+      btn.className = 'status-chip chip';
+      btn.style.setProperty('--c', o.color);
+      btn.innerHTML = `<span class="dot"></span><span class="truncate">${esc(o.label)}</span>${icon('chevron-down', 'ico--sm')}`;
+    } else {
+      btn.className = 'status-chip chip chip--btn';
+      btn.style.removeProperty('--c');
+      btn.innerHTML = `<span class="truncate">${esc(f.status_label || 'Status')}</span>${icon('chevron-down', 'ico--sm')}`;
+    }
+    refreshIcons();
+  };
+  btn.addEventListener('click', () => {
+    const f = live();
+    const opts = f.status_options || [];
+    openMenu(btn, [
+      { label: f.status_label || 'Status', header: true },
+      ...(opts.length
+        ? opts.map((o) => ({ label: o.label, color: o.color, value: o.id, selected: o.id === current }))
+        : [{ label: 'Nenhuma opção. Edite o campo para adicionar.', disabled: true, value: '__none' }]),
+      'sep',
+      { label: 'Sem status', icon: 'x', value: '__none' },
+    ], (v) => {
+      current = v === '__none' ? null : v;
+      paint();
+      onChange(current);
+    });
+  });
+  paint();
+  return btn;
+}
+
+// ----------------------------------------------------------------------------
 // Popover de opções (select/multiselect) com busca e "criar opção"
 // ----------------------------------------------------------------------------
 export function openOptionPicker(anchor, field, { selected = [], multi = false, onPick, onToggle, onClear }) {
@@ -270,16 +326,20 @@ export function openOptionPicker(anchor, field, { selected = [], multi = false, 
 
   list.addEventListener('click', async (e) => {
     const clear = e.target.closest('[data-clear]');
-    if (clear) { closePopover(); onClear?.(); return; }
+    if (clear) { closePopover(pop); onClear?.(); return; }
     const create = e.target.closest('[data-create]');
     if (create) {
       const label = search.value.trim();
       const opt = { id: uid(), label, color: randomPaletteColor() };
+      const next = [...(getField(f.id)?.options || f.options || []), opt];
+      // Seleciona ANTES de persistir: o valor entra no autosave pendente e,
+      // quando o update do campo re-renderizar a linha, já aparece escolhido.
+      if (multi) { sel.push(opt.id); onToggle?.(opt.id); }
+      else { closePopover(pop); onPick?.(opt.id); }
       try {
-        await updateField(f.id, { options: [...(getField(f.id)?.options || f.options || []), opt] });
+        await updateField(f.id, { options: next });
       } catch (err) { toastError(err); return; }
-      if (multi) { sel.push(opt.id); onToggle?.(opt.id); search.value = ''; paint(); }
-      else { closePopover(); onPick?.(opt.id); }
+      if (multi) { search.value = ''; paint(); }
       return;
     }
     const btn = e.target.closest('[data-opt]');
@@ -290,7 +350,7 @@ export function openOptionPicker(anchor, field, { selected = [], multi = false, 
       onToggle?.(id);
       paint();
     } else {
-      closePopover();
+      closePopover(pop);
       onPick?.(id);
     }
   });

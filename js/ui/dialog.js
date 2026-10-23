@@ -1,9 +1,25 @@
 // Diálogos (confirmação / prompt / custom) e popovers (menus flutuantes).
 // Também mantém a pilha de "coisas fecháveis" usada pelo Esc global.
+//
+// Camadas: cada diálogo/popover aberto recebe um número de sequência crescente
+// (data-layer-seq) e um z-index crescente. Assim um popover aberto de dentro
+// de um diálogo fica por cima dele, e um diálogo de confirmação aberto de
+// dentro de um popover fica por cima do popover. Um clique numa camada mais
+// nova nunca fecha uma camada mais antiga.
 import { icon, refreshIcons } from './icons.js';
 import { esc, el } from '../utils.js';
 
 const layers = () => document.getElementById('layers');
+
+let layerSeq = 0;
+const Z_BASE = 600;
+function nextLayer(node) {
+  const seq = ++layerSeq;
+  node.dataset.layerSeq = String(seq);
+  node.style.zIndex = String(Z_BASE + seq);
+  return seq;
+}
+const seqOf = (target) => Number(target?.closest?.('[data-layer-seq]')?.dataset.layerSeq || 0);
 
 // --- Pilha de fecháveis (Esc fecha o topo) ----------------------------------
 const closables = [];
@@ -23,7 +39,7 @@ export function hasOpenLayers() { return closables.length > 0; }
 // --- Dialog genérico ---------------------------------------------------------
 
 /**
- * openDialog({ title, body (html), actions: [{label, cls, value, primary}], size })
+ * openDialog({ title, body (html), actions: [{label, cls, value, onClick}], size })
  * Retorna { root, close, result } onde result é uma Promise com o value da ação
  * clicada (ou null se fechado por Esc/backdrop).
  */
@@ -39,6 +55,7 @@ export function openDialog({ title, body = '', actions = [], size = '', danger =
           <button class="btn ${a.cls || ''}" data-action="${i}">${a.label}</button>`).join('')}</div>` : ''}
       </div>
     </div>`);
+  nextLayer(backdrop);
   layers().appendChild(backdrop);
   refreshIcons();
 
@@ -135,28 +152,44 @@ export async function promptDialog({ title, label = '', value = '', placeholder 
 }
 
 // --- Popover -----------------------------------------------------------------
+// Pilha: popovers "aninhados" (opts.nested) abrem por cima do anterior sem
+// fechá-lo (ex.: seletor de cor dentro do editor de campo). Sem `nested`, abrir
+// um popover fecha todos os outros (comportamento de menu).
 
-let openPopoverEl = null;
-let openPopoverCleanup = null;
+const popStack = []; // { el, seq, cleanup }
 
-export function closePopover() {
-  if (!openPopoverEl) return;
-  openPopoverCleanup?.();
-  openPopoverEl.remove();
-  openPopoverEl = null;
-  openPopoverCleanup = null;
+/** Fecha o popover indicado (ou o do topo) e todos os que estiverem acima dele. */
+export function closePopover(target = null) {
+  if (!popStack.length) return;
+  let idx = popStack.length - 1;
+  if (target) {
+    idx = popStack.findIndex((p) => p.el === target || p.el.contains(target));
+    if (idx === -1) return;
+  }
+  const removed = popStack.splice(idx);
+  removed.reverse().forEach((p) => { p.cleanup?.(); p.el.remove(); });
+}
+
+export function closeAllPopovers() {
+  if (popStack.length) closePopover(popStack[0].el);
+}
+
+export function isInsidePopover(node) {
+  return popStack.some((p) => p.el.contains(node));
 }
 
 /**
  * Abre um popover ancorado em `anchor`. `html` é o conteúdo. Retorna o elemento.
- * opts.align: 'start' | 'end' ; opts.onClose
+ * opts: align ('start'|'end'), cls, nested, onClose
  */
 export function openPopover(anchor, html, opts = {}) {
-  closePopover();
+  if (!opts.nested) closeAllPopovers();
   const pop = el(`<div class="popover ${opts.cls || ''}">${html}</div>`);
+  const seq = nextLayer(pop);
   layers().appendChild(pop);
   refreshIcons();
-  openPopoverEl = pop;
+  const entry = { el: pop, seq };
+  popStack.push(entry);
   anchor.setAttribute?.('aria-expanded', 'true');
 
   const position = () => {
@@ -167,20 +200,29 @@ export function openPopover(anchor, html, opts = {}) {
     let top = r.bottom + 6;
     if (left + pw > vw - 8) left = vw - pw - 8;
     if (left < 8) left = 8;
-    if (top + ph > vh - 8) top = Math.max(8, r.top - ph - 6);
+    if (top + ph > vh - 8) {
+      const above = r.top - ph - 6;
+      top = above >= 8 ? above : Math.max(8, vh - ph - 8);
+    }
     pop.style.left = left + 'px';
     pop.style.top = top + 'px';
   };
   position();
 
-  const onDown = (e) => { if (!pop.contains(e.target) && !anchor.contains?.(e.target)) closePopover(); };
-  const onEsc = () => closePopover();
+  const onDown = (e) => {
+    if (pop.contains(e.target) || anchor.contains?.(e.target)) return;
+    if (seqOf(e.target) > seq) return; // clique numa camada mais nova (popover aninhado, diálogo)
+    closePopover(pop);
+  };
+  const onEsc = () => closePopover(pop);
   setTimeout(() => document.addEventListener('mousedown', onDown), 0);
   window.addEventListener('resize', position);
+  document.addEventListener('scroll', position, true);
   pushClosable(onEsc);
-  openPopoverCleanup = () => {
+  entry.cleanup = () => {
     document.removeEventListener('mousedown', onDown);
     window.removeEventListener('resize', position);
+    document.removeEventListener('scroll', position, true);
     removeClosable(onEsc);
     anchor.setAttribute?.('aria-expanded', 'false');
     opts.onClose?.();
@@ -190,12 +232,12 @@ export function openPopover(anchor, html, opts = {}) {
   return pop;
 }
 
-/** Menu de ações: items [{label, icon, value, danger, selected}, 'sep', {label:'...', header:true}] */
+/** Menu de ações: items [{label, icon, color, value, danger, selected, disabled}, 'sep', {label, header:true}] */
 export function openMenu(anchor, items, onSelect, opts = {}) {
   const html = `<div class="menu">${items.map((it, i) => {
     if (it === 'sep') return '<div class="menu__sep"></div>';
     if (it.header) return `<div class="menu__label">${esc(it.label)}</div>`;
-    return `<button class="menu__item ${it.danger ? 'menu__item--danger' : ''} ${it.selected ? 'is-selected' : ''}" data-i="${i}" ${it.disabled ? 'disabled' : ''}>
+    return `<button type="button" class="menu__item ${it.danger ? 'menu__item--danger' : ''} ${it.selected ? 'is-selected' : ''}" data-i="${i}" ${it.disabled ? 'disabled' : ''}>
       ${it.icon ? icon(it.icon) : (it.color ? `<span class="dot" style="--c:${esc(it.color)}"></span>` : '')}
       <span class="grow truncate">${esc(it.label)}</span>
       ${it.selected ? icon('check', 'check ico--sm') : ''}
@@ -205,7 +247,7 @@ export function openMenu(anchor, items, onSelect, opts = {}) {
   pop.querySelectorAll('.menu__item').forEach((btn) => {
     btn.addEventListener('click', () => {
       const it = items[Number(btn.dataset.i)];
-      closePopover();
+      closePopover(pop);
       onSelect(it.value ?? it.label, it);
     });
   });

@@ -37,8 +37,9 @@ export function bindColorGrid(root, onPick) {
   }
 }
 
-export function openColorPopover(anchor, current, onPick) {
-  const pop = openPopover(anchor, colorGridHtml(current), { cls: 'popover--wide' });
-  bindColorGrid(pop, (hex) => { closePopover(); onPick(hex); });
+/** opts.nested = abre por cima de outro popover sem fechá-lo */
+export function openColorPopover(anchor, current, onPick, opts = {}) {
+  const pop = openPopover(anchor, colorGridHtml(current), { cls: 'popover--wide', nested: !!opts.nested });
+  bindColorGrid(pop, (hex) => { closePopover(pop); onPick(hex); });
   return pop;
 }

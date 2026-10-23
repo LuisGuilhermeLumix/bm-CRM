@@ -1,17 +1,19 @@
-// Modal do card: título, coluna, tags, campos, observações, atividade.
-// Salvamento automático com debounce de 500ms e flush ao perder o foco.
-import { icon, refreshIcons } from './icons.js';
+// Modal do card: título, coluna, tags, campos (editáveis e reordenáveis),
+// observações, atividade. Salvamento automático com debounce de 500ms e flush
+// ao perder o foco.
+import Sortable from 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/modular/sortable.esm.js';
+import { icon, refreshIcons, fieldIconName } from './icons.js';
 import { esc, el, debounce, autoResize, relativeTime, formatDateTimeBR, randomPaletteColor, isTyping } from '../utils.js';
 import { state, on, getCard, getColumn, getTag, profileOf, sortedColumns, sortedFields, sortedTags, cardsInColumn } from '../state.js';
 import { updateCard, patchValues, moveCard, deleteCard, archiveCard, fetchActivity, addComment, logUpdated } from '../cards.js';
 import { addTagToCard, removeTagFromCard, createTag } from '../tags.js';
-import { isEmptyValue } from '../fields.js';
-import { renderFieldControl, fieldIcon } from './fieldInputs.js';
+import { isEmptyValue, reorderFields } from '../fields.js';
+import { renderFieldControl, renderStatusControl, statusKey } from './fieldInputs.js';
+import { openFieldEditor } from './fieldEditor.js';
 import { chipHtml, avatarHtml, emptyHtml } from './common.js';
-import { openMenu, openPopover, closePopover, confirmDialog, pushClosable, removeClosable } from './dialog.js';
+import { openMenu, openPopover, closePopover, closeAllPopovers, confirmDialog, pushClosable, removeClosable } from './dialog.js';
 import { colorGridHtml, bindColorGrid } from './colorPicker.js';
 import { toast, toastError, toastSuccess } from './toast.js';
-import { openBoardSettings } from './boardSettings.js';
 
 let cur = null;
 
@@ -34,6 +36,9 @@ export function openCardModal(cardId) {
             <div class="section">
               <div class="section__title">${icon('sliders-horizontal')} Campos</div>
               <div class="fields-grid" id="cmFields"></div>
+              <div id="cmFieldsFoot">
+                <button type="button" class="btn btn--ghost btn--sm" id="cmAddField">${icon('plus', 'ico--sm')} Adicionar campo</button>
+              </div>
             </div>
             <div class="section">
               <div class="section__title">${icon('align-left')} Observações</div>
@@ -69,6 +74,7 @@ export function openCardModal(cardId) {
     stale: false,
     offs: [],
     activity: null,
+    fieldsSortable: null,
   };
   ctx.save = debounce(() => flush(ctx), 500);
   ctx.onEsc = () => closeCardModal();
@@ -77,28 +83,26 @@ export function openCardModal(cardId) {
 
   root.addEventListener('mousedown', (e) => { if (e.target === root) ctx.backdropDown = true; });
   root.addEventListener('mouseup', (e) => { if (e.target === root && ctx.backdropDown) closeCardModal(); ctx.backdropDown = false; });
-  // ao sair de qualquer campo, salva na hora
+  // ao sair de qualquer campo, salva na hora e aplica linhas que ficaram pendentes
   root.addEventListener('focusout', () => {
     ctx.save.cancel();
     flush(ctx);
-    if (ctx.stale && !ctx.saving) setTimeout(() => { if (cur === ctx && !(root.contains(document.activeElement) && isTyping())) refreshEditable(ctx); }, 50);
+    setTimeout(() => {
+      if (cur !== ctx || typingInside(ctx)) return;
+      if (ctx.stale && !ctx.saving) refreshEditable(ctx);
+      else syncFields(ctx);
+    }, 50);
   });
 
   ctx.offs.push(on('cards', () => onCardsEvent(ctx)));
-  // Mudanças só nas opções (ex.: criar opção pelo seletor) não re-renderizam:
-  // os controles leem getField() ao vivo. Só estrutura (campo novo, tipo,
-  // nome, ordem…) exige re-render.
-  ctx.fieldsSig = fieldsSignature();
-  ctx.offs.push(on('fields', () => {
-    const sig = fieldsSignature();
-    if (sig === ctx.fieldsSig) return;
-    ctx.fieldsSig = sig;
-    if ((root.contains(document.activeElement) && isTyping()) || hasPending(ctx) || ctx.saving) ctx.stale = true;
-    else renderFields(ctx);
-  }));
+  // Mudança na definição de um campo (inclusive vinda do realtime): re-renderiza
+  // só a linha daquele campo; linhas com foco esperam o usuário sair delas.
+  ctx.offs.push(on('fields', () => syncFields(ctx)));
   ctx.offs.push(on('tags', () => renderTags(ctx)));
   ctx.offs.push(on('columns', () => { renderHead(ctx); renderInfo(ctx); }));
   ctx.offs.push(on('profiles', () => { renderInfo(ctx); renderActivity(ctx); }));
+
+  root.querySelector('#cmAddField').addEventListener('click', (e) => openFieldEditor(e.currentTarget, { fieldId: null }));
 
   renderHead(ctx);
   renderTitle(ctx);
@@ -121,9 +125,12 @@ export function closeCardModal() {
   flush(ctx);
   ctx.offs.forEach((off) => off());
   removeClosable(ctx.onEsc);
-  closePopover();
+  closeAllPopovers();
+  try { ctx.fieldsSortable?.destroy(); } catch { /* ignore */ }
   ctx.root.remove();
 }
+
+const typingInside = (ctx) => ctx.root.contains(document.activeElement) && isTyping();
 
 // ----------------------------------------------------------------------------
 // Autosave
@@ -134,8 +141,8 @@ function queueCard(ctx, patch, name) {
   setStatus(ctx, 'dirty');
   ctx.save();
 }
-function queueValue(ctx, fieldId, value, name) {
-  ctx.pending.values[fieldId] = value;
+function queueValue(ctx, key, value, name) {
+  ctx.pending.values[key] = value;
   ctx.pending.names.add(name);
   setStatus(ctx, 'dirty');
   ctx.save();
@@ -144,8 +151,13 @@ function hasPending(ctx) {
   return Object.keys(ctx.pending.card).length > 0 || Object.keys(ctx.pending.values).length > 0;
 }
 
-function fieldsSignature() {
-  return sortedFields().map((f) => [f.id, f.name, f.type, f.required, f.show_on_card, f.position].join('|')).join(';');
+/** values do card + o que ainda não foi salvo (para re-renderizar sem perder digitação). */
+function effectiveValues(ctx) {
+  const v = { ...(getCard(ctx.cardId)?.values || {}) };
+  for (const [k, val] of Object.entries(ctx.pending.values)) {
+    if (val == null) delete v[k]; else v[k] = val;
+  }
+  return v;
 }
 
 async function flush(ctx) {
@@ -165,8 +177,9 @@ async function flush(ctx) {
     toastError(e);
   } finally {
     ctx.saving--;
-    if (cur === ctx && ctx.stale && !ctx.saving && !hasPending(ctx) && !(ctx.root.contains(document.activeElement) && isTyping())) {
-      refreshEditable(ctx);
+    if (cur === ctx && !ctx.saving && !hasPending(ctx) && !typingInside(ctx)) {
+      if (ctx.stale) refreshEditable(ctx);
+      else syncFields(ctx);
     }
   }
 }
@@ -179,7 +192,6 @@ function setStatus(ctx, status) {
   if (status === 'saving') elx.innerHTML = `${icon('loader-circle', 'ico--sm spin')} Salvando…`;
   else if (status === 'saved') { elx.classList.add('is-saved'); elx.innerHTML = `${icon('check', 'ico--sm')} Salvo`; }
   else if (status === 'error') { elx.classList.add('is-error'); elx.innerHTML = `${icon('circle-alert', 'ico--sm')} Erro ao salvar`; }
-  else if (status === 'dirty') elx.innerHTML = '';
   else elx.innerHTML = '';
   refreshIcons();
   if (status === 'saved') {
@@ -204,7 +216,7 @@ function onCardsEvent(ctx) {
   if (tagsSig !== ctx.seenTags) { ctx.seenTags = tagsSig; renderTags(ctx); }
   if (card.updated_at !== ctx.seenUpdatedAt) {
     if (ctx.saving) { ctx.seenUpdatedAt = card.updated_at; return; } // mudança nossa
-    if ((ctx.root.contains(document.activeElement) && isTyping()) || hasPending(ctx)) { ctx.stale = true; return; }
+    if (typingInside(ctx) || hasPending(ctx)) { ctx.stale = true; return; }
     refreshEditable(ctx);
   }
 }
@@ -222,7 +234,7 @@ function refreshEditable(ctx) {
 }
 
 // ----------------------------------------------------------------------------
-// Seções
+// Cabeçalho / título / arquivado
 // ----------------------------------------------------------------------------
 function renderHead(ctx) {
   const head = ctx.root.querySelector('#cmHead');
@@ -285,7 +297,8 @@ function renderTitle(ctx) {
   const host = ctx.root.querySelector('#cmTitle');
   const card = getCard(ctx.cardId);
   host.innerHTML = '';
-  const ta = el(`<textarea class="card-modal__title ${card.archived ? 'is-archived' : ''}" rows="1" placeholder="Título do card">${esc(card.title)}</textarea>`);
+  const title = ctx.pending.card.title ?? card.title;
+  const ta = el(`<textarea class="card-modal__title ${card.archived ? 'is-archived' : ''}" rows="1" placeholder="Título do card">${esc(title)}</textarea>`);
   ta.addEventListener('input', () => {
     autoResize(ta);
     const t = ta.value.trim();
@@ -307,43 +320,116 @@ function renderArchived(ctx) {
   refreshIcons();
 }
 
+// ----------------------------------------------------------------------------
+// Campos
+// ----------------------------------------------------------------------------
+function fieldSig(f) {
+  return JSON.stringify([f.name, f.type, f.icon, f.required, f.show_on_card, f.options, f.status_enabled, f.status_label, f.status_options]);
+}
+
+function renderFieldRow(ctx, f) {
+  const values = effectiveValues(ctx);
+  const row = el(`<div class="field-row" data-field-id="${f.id}"></div>`);
+  row.dataset.sig = fieldSig(f);
+  row.innerHTML = `
+    <div class="field-row__label" title="${esc(f.name)}">
+      ${icon(fieldIconName(f))}
+      <span>${esc(f.name)}</span>
+      ${f.required ? '<span class="req">*</span>' : ''}
+      <span class="field-row__actions">
+        <button type="button" class="field-row__action" data-edit-field title="Editar campo">${icon('pencil')}</button>
+        <span class="field-row__action field-row__grip" title="Arrastar para reordenar">${icon('grip-vertical')}</span>
+      </span>
+    </div>`;
+  const wrap = el('<div class="field-row__control-wrap"></div>');
+  const value = values[f.id];
+  const hint = el(`<div class="required-hint ${f.required && isEmptyValue(value) ? '' : 'hidden'}">Campo obrigatório</div>`);
+  const control = renderFieldControl(f, value, (v) => {
+    queueValue(ctx, f.id, v, f.name);
+    hint.classList.toggle('hidden', !(f.required && isEmptyValue(v)));
+  });
+  control.appendChild(hint);
+  wrap.appendChild(control);
+  if (f.status_enabled) {
+    wrap.appendChild(renderStatusControl(f, values[statusKey(f.id)], (v) => {
+      queueValue(ctx, statusKey(f.id), v, `${f.name} › ${f.status_label || 'Status'}`);
+    }));
+  }
+  row.appendChild(wrap);
+  row.querySelector('[data-edit-field]').addEventListener('click', (e) => openFieldEditor(e.currentTarget, { fieldId: f.id }));
+  return row;
+}
+
 function renderFields(ctx) {
   const host = ctx.root.querySelector('#cmFields');
-  const card = getCard(ctx.cardId);
-  const fields = sortedFields();
+  try { ctx.fieldsSortable?.destroy(); } catch { /* ignore */ }
+  ctx.fieldsSortable = null;
   host.innerHTML = '';
+  const fields = sortedFields();
   if (!fields.length) {
     host.innerHTML = emptyHtml({
       icon: 'sliders-horizontal', small: true,
-      text: 'Este board ainda não tem campos personalizados.',
-      action: `<button type="button" class="btn btn--sm" id="cmGoFields">${icon('settings-2', 'ico--sm')} Configurar campos</button>`,
+      text: 'Este board ainda não tem campos personalizados. Use "Adicionar campo" para criar o primeiro.',
     });
-    host.querySelector('#cmGoFields').addEventListener('click', () => { closeCardModal(); openBoardSettings('fields'); });
     refreshIcons();
     return;
   }
+  fields.forEach((f) => host.appendChild(renderFieldRow(ctx, f)));
+  refreshIcons();
+  ctx.fieldsSortable = new Sortable(host, {
+    handle: '.field-row__grip', draggable: '.field-row', animation: 150, ghostClass: 'sortable-ghost',
+    delay: 150, delayOnTouchOnly: true,
+    onEnd: () => setTimeout(() => {
+      const ids = [...host.querySelectorAll('.field-row')].map((r) => r.dataset.fieldId);
+      if (ids.join() !== sortedFields().map((f) => f.id).join()) {
+        reorderFields(ids).catch((e) => { toastError(e); renderFields(ctx); });
+      }
+    }, 0),
+  });
+}
+
+/**
+ * Sincroniza as linhas com a definição atual dos campos: adiciona, remove,
+ * reordena e substitui só as linhas cuja definição mudou. Uma linha com foco
+ * não é substituída agora (a digitação não se perde); ela é atualizada no
+ * próximo focusout.
+ */
+function syncFields(ctx) {
+  const host = ctx.root.querySelector('#cmFields');
+  if (!host) return;
+  const fields = sortedFields();
+  const hasRows = !!host.querySelector('.field-row');
+  if (!fields.length || !hasRows) { renderFields(ctx); return; }
+
+  host.querySelectorAll('.field-row').forEach((row) => {
+    if (!fields.some((f) => f.id === row.dataset.fieldId)) row.remove();
+  });
+  let prev = null;
   for (const f of fields) {
-    const value = card.values?.[f.id];
-    const row = el(`<div class="field-row">
-      <div class="field-row__label" title="${esc(f.name)}">${icon(fieldIcon(f.type))}<span>${esc(f.name)}</span>${f.required ? '<span class="req">*</span>' : ''}</div>
-    </div>`);
-    const hint = el(`<div class="required-hint ${f.required && isEmptyValue(value) ? '' : 'hidden'}">Campo obrigatório</div>`);
-    const control = renderFieldControl(f, value, (v) => {
-      queueValue(ctx, f.id, v, f.name);
-      hint.classList.toggle('hidden', !(f.required && isEmptyValue(v)));
-    });
-    control.appendChild(hint);
-    row.appendChild(control);
-    host.appendChild(row);
+    let row = host.querySelector(`.field-row[data-field-id="${f.id}"]`);
+    if (!row) {
+      row = renderFieldRow(ctx, f);
+    } else if (row.dataset.sig !== fieldSig(f) && !row.contains(document.activeElement)) {
+      const fresh = renderFieldRow(ctx, f);
+      row.replaceWith(fresh);
+      row = fresh;
+    }
+    const expected = prev ? prev.nextElementSibling : host.firstElementChild;
+    if (expected !== row) host.insertBefore(row, expected);
+    prev = row;
   }
   refreshIcons();
 }
 
+// ----------------------------------------------------------------------------
+// Observações / tags / info / atividade
+// ----------------------------------------------------------------------------
 function renderDesc(ctx) {
   const host = ctx.root.querySelector('#cmDesc');
   const card = getCard(ctx.cardId);
   host.innerHTML = '';
-  const ta = el(`<textarea class="textarea input--invisible" rows="3" placeholder="Anotações sobre o cliente, contexto, próximos passos…">${esc(card.description || '')}</textarea>`);
+  const desc = ctx.pending.card.description !== undefined ? ctx.pending.card.description : card.description;
+  const ta = el(`<textarea class="textarea input--invisible" rows="3" placeholder="Anotações sobre o cliente, contexto, próximos passos…">${esc(desc || '')}</textarea>`);
   ta.addEventListener('input', () => {
     autoResize(ta);
     queueCard(ctx, { description: ta.value.trim() ? ta.value : null }, 'Observações');
@@ -409,12 +495,12 @@ function openTagPicker(anchor, ctx) {
       try {
         const t = await createTag(state.boardId, { name: nm, color });
         await addTagToCard(ctx.cardId, t.id);
-        closePopover();
+        closePopover(pop);
       } catch (err) { toastError(err); }
     };
     pop.querySelector('#ntCreate').addEventListener('click', create);
     pop.querySelector('#ntName').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); create(); } });
-    pop.querySelector('#ntCancel').addEventListener('click', closePopover);
+    pop.querySelector('#ntCancel').addEventListener('click', () => closePopover(pop));
     pop.querySelector('#ntName').focus();
   };
 

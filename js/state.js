@@ -14,7 +14,7 @@ export const state = {
   fields: [],
   tags: [],
   cards: [],             // cada card tem tag_ids: []
-  filters: { q: '', tagIds: [] },
+  filters: { q: '', tagIds: [], statusKeys: [] }, // statusKeys: "<fieldId>:<optionId>"
   loadingBoard: false,
   dragging: false,       // true durante drag; renders ficam pendentes
   pendingRender: new Set(),
