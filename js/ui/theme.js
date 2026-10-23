@@ -6,8 +6,18 @@ export function currentTheme() {
   return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
 }
 
+let switchTimer = null;
+/** Liga as transições de cor só durante a troca de tema (não interfere em hover/drag). */
+function withThemeTransition(fn) {
+  const root = document.documentElement;
+  root.classList.add('theme-switching');
+  fn();
+  clearTimeout(switchTimer);
+  switchTimer = setTimeout(() => root.classList.remove('theme-switching'), 250);
+}
+
 export function setTheme(theme) {
-  document.documentElement.setAttribute('data-theme', theme);
+  withThemeTransition(() => document.documentElement.setAttribute('data-theme', theme));
   try { localStorage.setItem(KEY, theme); } catch { /* ignore */ }
   emit('theme', theme);
 }
@@ -24,7 +34,7 @@ export function initTheme() {
     let saved = null;
     try { saved = localStorage.getItem(KEY); } catch { /* ignore */ }
     if (!saved) {
-      document.documentElement.setAttribute('data-theme', e.matches ? 'light' : 'dark');
+      withThemeTransition(() => document.documentElement.setAttribute('data-theme', e.matches ? 'light' : 'dark'));
       emit('theme');
     }
   });

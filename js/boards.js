@@ -82,6 +82,16 @@ export async function deleteBoard(id) {
   }
 }
 
+/**
+ * Duplica o board (RPC duplicate_board) logo abaixo do original.
+ * withCards = false copia só colunas, campos e tags. Recarrega a lista.
+ */
+export async function duplicateBoard(id, withCards) {
+  const row = await run(sb.rpc('duplicate_board', { p_board_id: id, p_with_cards: !!withCards }));
+  await loadBoards();
+  return row;
+}
+
 export async function reorderBoards(ids) {
   ids.forEach((id, i) => { const b = state.boards.find((x) => x.id === id); if (b) b.position = i; });
   emit('boards');
@@ -95,7 +105,8 @@ export async function openBoard(id) {
   state.boardId = id;
   state.loadingBoard = true;
   state.columns = []; state.fields = []; state.tags = []; state.cards = [];
-  state.filters = { q: '', tagIds: [] };
+  state.filters = { q: '', tagIds: [], statusKeys: [] };
+  state.movedAway.clear();
   storage.set(LAST_BOARD_KEY, id);
   emit('board');
   try {

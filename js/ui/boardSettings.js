@@ -12,6 +12,7 @@ import { chipHtml, emptyHtml, toggleHtml } from './common.js';
 import { colorGridHtml, bindColorGrid, openColorPopover } from './colorPicker.js';
 import { openIconPicker } from './iconPicker.js';
 import { openFieldEditor } from './fieldEditor.js';
+import { duplicateBoardFlow } from './boardForm.js';
 import { openDialog, confirmDialog, pushClosable, removeClosable, closeAllPopovers } from './dialog.js';
 import { toast, toastError, toastSuccess } from './toast.js';
 
@@ -404,6 +405,14 @@ function renderBoardTab(body) {
         </div>`).join('')}</div>`
       : '<p class="hint">Nenhum card arquivado. Cards arquivados saem do kanban mas podem ser restaurados aqui.</p>'}
     </div>
+    <div class="section">
+      <div class="section__title">${icon('copy')} Duplicar board</div>
+      <p class="hint">Cria "${esc(board.name)} (cópia)" logo abaixo deste na barra lateral e abre o board novo.</p>
+      <div class="row" style="flex-wrap:wrap">
+        <button type="button" class="btn" id="bDupCards">${icon('copy')} Com cards</button>
+        <button type="button" class="btn" id="bDupStruct">${icon('layout-template')} Só a estrutura</button>
+      </div>
+    </div>
     <div class="danger-zone">
       <h4>Zona de perigo</h4>
       <p class="muted">Excluir o board apaga colunas, campos, tags e todos os ${state.cards.length} cards. Não dá para desfazer.</p>
@@ -434,6 +443,9 @@ function renderBoardTab(body) {
       updateBoard(board.id, { icon: name }).catch(toastError);
     }, { allowDefault: false });
   });
+
+  body.querySelector('#bDupCards').addEventListener('click', () => duplicateBoardFlow(board.id, true));
+  body.querySelector('#bDupStruct').addEventListener('click', () => duplicateBoardFlow(board.id, false));
 
   body.querySelectorAll('[data-restore]').forEach((b) => b.addEventListener('click', async () => {
     try { await archiveCard(b.dataset.restore, false); toastSuccess('Card restaurado.'); } catch (e) { toastError(e); }

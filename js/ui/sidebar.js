@@ -9,7 +9,7 @@ import { currentTheme, toggleTheme } from './theme.js';
 import { openMenu, pushClosable, removeClosable } from './dialog.js';
 import { openProfileEditor } from './profileEditor.js';
 import { toastError } from './toast.js';
-import { openNewBoardDialog } from './boardForm.js';
+import { openNewBoardDialog, duplicateBoardFlow } from './boardForm.js';
 import { avatarHtml, emptyHtml } from './common.js';
 
 const COLLAPSE_KEY = 'lumix.sidebarCollapsed';
@@ -72,10 +72,13 @@ function render() {
     </div>
     <nav class="sidebar__boards" id="boardsList">
       ${boards.map((b) => `
-        <button class="board-item ${b.id === state.boardId ? 'is-active' : ''}" data-board-id="${b.id}" style="--c:${esc(b.color)}" title="${esc(b.name)}">
-          <span class="board-item__icon">${icon(b.icon || 'kanban')}</span>
-          <span class="board-item__name">${esc(b.name)}</span>
-        </button>`).join('')}
+        <div class="board-item ${b.id === state.boardId ? 'is-active' : ''}" data-board-id="${b.id}" style="--c:${esc(b.color)}">
+          <button type="button" class="board-item__main" title="${esc(b.name)}">
+            <span class="board-item__icon">${icon(b.icon || 'kanban')}</span>
+            <span class="board-item__name">${esc(b.name)}</span>
+          </button>
+          <button type="button" class="board-item__more" data-board-menu title="Mais ações" aria-label="Mais ações do board ${esc(b.name)}">${icon('ellipsis')}</button>
+        </div>`).join('')}
       ${!boards.length ? emptyHtml({ icon: 'layout-grid', text: 'Nenhum board ainda.', small: true }) : ''}
     </nav>
     <div style="padding: 6px 10px 10px">
@@ -92,10 +95,25 @@ function render() {
   refreshIcons();
 
   host.querySelector('#btnCollapse').addEventListener('click', toggleSidebar);
-  host.querySelectorAll('[data-board-id]').forEach((b) => b.addEventListener('click', async () => {
+  host.querySelectorAll('.board-item__main').forEach((b) => b.addEventListener('click', async () => {
+    const id = b.closest('[data-board-id]').dataset.boardId;
     closeSidebar();
-    if (b.dataset.boardId === state.boardId) return;
-    try { await openBoard(b.dataset.boardId); } catch (e) { toastError(e); }
+    if (id === state.boardId) return;
+    try { await openBoard(id); } catch (e) { toastError(e); }
+  }));
+  host.querySelectorAll('[data-board-menu]').forEach((b) => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const id = b.closest('[data-board-id]').dataset.boardId;
+    const board = boards.find((x) => x.id === id);
+    openMenu(b, [
+      { label: board?.name || 'Board', header: true },
+      { label: 'Duplicar com cards', icon: 'copy', value: 'dup-cards' },
+      { label: 'Duplicar só a estrutura', icon: 'layout-template', value: 'dup-struct' },
+    ], (v) => {
+      closeSidebar();
+      if (v === 'dup-cards') duplicateBoardFlow(id, true);
+      if (v === 'dup-struct') duplicateBoardFlow(id, false);
+    });
   }));
   host.querySelectorAll('.btn-new-board').forEach((b) => b.addEventListener('click', async () => {
     closeSidebar();

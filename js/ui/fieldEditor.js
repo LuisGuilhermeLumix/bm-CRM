@@ -3,7 +3,7 @@
 // board → Campos. Inclui o editor de opções (select/multiselect e grupos de status).
 import Sortable from 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/modular/sortable.esm.js';
 import { icon, refreshIcons, fieldIconName } from './icons.js';
-import { esc, uid, randomPaletteColor } from '../utils.js';
+import { esc, el, uid, nextPaletteColor } from '../utils.js';
 import { state, getField } from '../state.js';
 import {
   FIELD_TYPES, createField, updateField, deleteField, fieldUsage, optionUsage, statusOptionUsage, statusGroupUsage,
@@ -20,18 +20,22 @@ import { toast, toastError, toastSuccess } from './toast.js';
 // Editor de opções (componente): lista arrastável de { id, label, color }
 // ============================================================================
 
-export function optionsEditorHtml(options, key, { placeholder = 'Nome da opção' } = {}) {
+function optionRowHtml(o, placeholder) {
   return `
-  <div class="options-editor" data-oe="${key}">
-    ${options.map((o) => `
       <div class="option-row" data-opt-id="${esc(o.id)}">
         <span class="handle" title="Arrastar para reordenar">${icon('grip-vertical')}</span>
         <button type="button" class="color-btn color-btn--sm" data-opt-color style="--c:${esc(o.color)}" title="Cor"></button>
         <input class="input input--sm" value="${esc(o.label)}" placeholder="${esc(placeholder)}" autocomplete="off" />
         <button type="button" class="btn btn--ghost btn--icon btn--sm" data-opt-rm title="Remover">${icon('x')}</button>
-      </div>`).join('')}
-    ${!options.length ? '<p class="hint">Nenhuma opção ainda.</p>' : ''}
-    <div><button type="button" class="btn btn--sm" data-opt-add>${icon('plus', 'ico--sm')} Adicionar opção</button></div>
+      </div>`;
+}
+
+export function optionsEditorHtml(options, key, { placeholder = 'Nome da opção' } = {}) {
+  return `
+  <div class="options-editor" data-oe="${key}" data-placeholder="${esc(placeholder)}">
+    <div class="options-editor__list">${options.map((o) => optionRowHtml(o, placeholder)).join('')}</div>
+    <p class="hint options-editor__empty ${options.length ? 'hidden' : ''}">Nenhuma opção ainda.</p>
+    <div><button type="button" class="btn btn--sm" data-opt-add title="Enter cria a próxima · Backspace num campo vazio remove · ↑↓ navegam">${icon('plus', 'ico--sm')} Adicionar opção</button></div>
   </div>`;
 }
 
@@ -47,34 +51,93 @@ export function readOptionsEditor(container, options) {
 }
 
 /**
- * bindOptionsEditor(container, options, { onStructureChange, sortables })
- * `options` é mutado no lugar. onStructureChange() é chamado quando precisa
- * re-renderizar (adicionar/remover). Cores são trocadas sem re-render.
+ * bindOptionsEditor(container, options, { sortables })
+ * `options` é mutado no lugar. Adicionar/remover mexe só nas linhas da lista
+ * (sem re-renderizar o popover), então o foco e a rolagem não se perdem.
+ * Teclado: Enter cria uma opção logo abaixo (não cria se a atual estiver
+ * vazia); Backspace num campo vazio remove e volta para a anterior; ↑/↓
+ * navegam. Cor nova = próxima cor da paleta ainda não usada no grupo.
  */
-export function bindOptionsEditor(container, options, { onStructureChange, sortables = [] }) {
-  sortables.push(new Sortable(container, {
+export function bindOptionsEditor(container, options, { sortables = [] } = {}) {
+  const list = container.querySelector('.options-editor__list');
+  const empty = container.querySelector('.options-editor__empty');
+  const placeholder = container.dataset.placeholder || 'Nome da opção';
+  const rows = () => [...list.querySelectorAll('.option-row')];
+  const inputs = () => rows().map((r) => r.querySelector('input'));
+  const syncEmpty = () => empty?.classList.toggle('hidden', options.length > 0);
+  const focusInput = (inp) => {
+    if (!inp) return;
+    inp.focus();
+    const n = inp.value.length;
+    try { inp.setSelectionRange(n, n); } catch { /* ignore */ }
+    inp.scrollIntoView({ block: 'nearest' });
+  };
+
+  sortables.push(new Sortable(list, {
     handle: '.handle', draggable: '.option-row', animation: 150, ghostClass: 'sortable-ghost',
     onEnd: () => readOptionsEditor(container, options),
   }));
-  container.querySelector('[data-opt-add]').addEventListener('click', () => {
+
+  const addAfter = (row) => {
     readOptionsEditor(container, options);
-    options.push({ id: uid(), label: '', color: randomPaletteColor() });
-    onStructureChange({ focusLast: true });
+    const o = { id: uid(), label: '', color: nextPaletteColor(options.map((x) => x.color)) };
+    const at = row ? options.findIndex((x) => x.id === row.dataset.optId) + 1 : options.length;
+    options.splice(at > 0 ? at : options.length, 0, o);
+    const node = el(optionRowHtml(o, placeholder));
+    if (row) row.after(node); else list.appendChild(node);
+    refreshIcons();
+    syncEmpty();
+    focusInput(node.querySelector('input'));
+  };
+
+  const removeRow = (row, { focusPrev = false } = {}) => {
+    const i = rows().indexOf(row);
+    const idx = options.findIndex((x) => x.id === row.dataset.optId);
+    if (idx >= 0) options.splice(idx, 1);
+    row.remove();
+    syncEmpty();
+    if (focusPrev) focusInput(inputs()[Math.max(0, i - 1)]);
+  };
+
+  container.querySelector('[data-opt-add]').addEventListener('click', () => addAfter(null));
+
+  list.addEventListener('click', (e) => {
+    const rm = e.target.closest('[data-opt-rm]');
+    if (rm) { removeRow(rm.closest('.option-row')); return; }
+    const cb = e.target.closest('[data-opt-color]');
+    if (cb) {
+      const o = options.find((x) => x.id === cb.closest('.option-row').dataset.optId);
+      openColorPopover(cb, o?.color, (hex) => { if (o) o.color = hex; cb.style.setProperty('--c', hex); }, { nested: true });
+    }
   });
-  container.querySelectorAll('[data-opt-rm]').forEach((b) => b.addEventListener('click', () => {
-    readOptionsEditor(container, options);
-    const id = b.closest('[data-opt-id]').dataset.optId;
-    options.splice(0, options.length, ...options.filter((o) => o.id !== id));
-    onStructureChange();
-  }));
-  container.querySelectorAll('[data-opt-color]').forEach((b) => b.addEventListener('click', () => {
-    const id = b.closest('[data-opt-id]').dataset.optId;
-    const o = options.find((x) => x.id === id);
-    openColorPopover(b, o?.color, (hex) => { if (o) o.color = hex; b.style.setProperty('--c', hex); }, { nested: true });
-  }));
-  container.querySelectorAll('[data-opt-id] input').forEach((inp) => inp.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); container.querySelector('[data-opt-add]').click(); }
-  }));
+
+  list.addEventListener('input', (e) => {
+    const row = e.target.closest('.option-row');
+    const o = row && options.find((x) => x.id === row.dataset.optId);
+    if (o) o.label = e.target.value;
+  });
+
+  list.addEventListener('keydown', (e) => {
+    const inp = e.target.closest('.option-row input');
+    if (!inp || e.isComposing) return;
+    const row = inp.closest('.option-row');
+    const all = inputs();
+    const i = all.indexOf(inp);
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (inp.value.trim()) addAfter(row);
+    } else if (e.key === 'Backspace' && inp.value === '' && all.length > 1) {
+      e.preventDefault();
+      removeRow(row, { focusPrev: true });
+    } else if (e.key === 'ArrowUp' && i > 0) {
+      e.preventDefault();
+      focusInput(all[i - 1]);
+    } else if (e.key === 'ArrowDown' && i < all.length - 1) {
+      e.preventDefault();
+      focusInput(all[i + 1]);
+    }
+  });
 }
 
 // ============================================================================
@@ -213,7 +276,9 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
       const inputs = pop.querySelectorAll(`[data-oe="${focus.slice(8)}"] [data-opt-id] input`);
       inputs[inputs.length - 1]?.focus();
     } else if (focus?.startsWith?.('group:')) {
-      pop.querySelector(`[data-sg-id="${focus.slice(6)}"] [data-sg-label]`)?.focus();
+      const inp = pop.querySelector(`[data-sg-id="${focus.slice(6)}"] [data-sg-label]`);
+      inp?.focus();
+      inp?.scrollIntoView({ block: 'nearest' });
     } else if (focus) pop.querySelector(focus)?.focus();
   };
 
@@ -227,7 +292,7 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
     });
     q('#feType').addEventListener('change', () => rerender('#feType'));
     const oe = q('[data-oe="options"]');
-    if (oe) bindOptionsEditor(oe, d.options, { sortables, onStructureChange: (o) => rerender(o?.focusLast ? 'lastopt:options' : null) });
+    if (oe) bindOptionsEditor(oe, d.options, { sortables });
 
     // grupos de status
     const groupsHost = q('#feGroups');
@@ -239,7 +304,7 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
     }
     for (const g of d.statuses) {
       const se = q(`[data-oe="sg:${g.id}"]`);
-      if (se) bindOptionsEditor(se, g.options, { sortables, onStructureChange: (o) => rerender(o?.focusLast ? `lastopt:sg:${g.id}` : null) });
+      if (se) bindOptionsEditor(se, g.options, { sortables });
       const row = q(`[data-sg-id="${g.id}"]`);
       row?.querySelector('[data-sg-label]').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); se?.querySelector('[data-opt-add]')?.click(); }

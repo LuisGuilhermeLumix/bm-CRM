@@ -137,6 +137,48 @@ export async function patchValues(id, patch) {
   }
 }
 
+/** Busca um card (com tags) direto do banco. */
+export async function fetchCardById(id) {
+  const row = await run(sb.from('cards').select('*, card_tags(tag_id)').eq('id', id).single());
+  return normalizeCard(row);
+}
+
+/**
+ * Duplica o card logo abaixo do original (RPC duplicate_card).
+ * withValues = true copia descrição e valores; false copia só a estrutura
+ * (field_ids e tags). Devolve o card novo já no estado local.
+ */
+export async function duplicateCard(cardId, withValues) {
+  const src = getCard(cardId);
+  const row = await run(sb.rpc('duplicate_card', { p_card_id: cardId, p_with_values: !!withValues }));
+  const card = normalizeCard(row);
+  // espelha o SQL: abre espaço na coluna a partir da posição da cópia
+  cardsInColumn(card.column_id).forEach((c) => { if (c.position >= card.position) c.position += 1; });
+  card.tag_ids = [...(src?.tag_ids || [])];
+  upsertCard(card);
+  emit('cards');
+  return getCard(card.id);
+}
+
+/** O que mover o card para outro board criaria lá: { fields_to_create, tags_to_create }. */
+export function previewMoveCard(cardId, boardId) {
+  return run(sb.rpc('preview_move_card', { p_card_id: cardId, p_board_id: boardId }));
+}
+
+/** Move o card para outro board (RPC move_card_to_board) e tira do board aberto. */
+export async function moveCardToBoard(cardId, boardId, columnId) {
+  const row = await run(sb.rpc('move_card_to_board', { p_card_id: cardId, p_board_id: boardId, p_column_id: columnId }));
+  const card = getCard(cardId);
+  if (card) {
+    state.movedAway.add(cardId);
+    const col = card.column_id;
+    removeCard(cardId);
+    reindexColumnLocally(col);
+    emit('cards');
+  }
+  return row;
+}
+
 export async function archiveCard(id, archived = true) {
   await updateCard(id, { archived });
   run(sb.from('card_activity').insert({

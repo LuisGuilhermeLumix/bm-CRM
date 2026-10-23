@@ -4,17 +4,19 @@
 import Sortable from 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/modular/sortable.esm.js';
 import { icon, refreshIcons, fieldIconName } from './icons.js';
 import { esc, el, debounce, autoResize, relativeTime, formatDateTimeBR, randomPaletteColor, isTyping } from '../utils.js';
-import { state, on, getCard, getColumn, getTag, profileOf, sortedColumns, sortedFields, sortedTags, cardsInColumn } from '../state.js';
+import { state, on, getCard, getColumn, getTag, profileOf, sortedColumns, sortedFields, sortedTags, sortedBoards, cardsInColumn } from '../state.js';
 import {
   updateCard, patchValues, moveCard, deleteCard, archiveCard, fetchActivity, addComment, logUpdated,
   cardFields, addFieldToCard, removeFieldFromCard, reorderCardFields,
+  duplicateCard, moveCardToBoard, previewMoveCard,
 } from '../cards.js';
+import { fetchColumns } from '../columns.js';
 import { addTagToCard, removeTagFromCard, createTag } from '../tags.js';
 import { isEmptyValue, fieldStatuses, statusPrefixOf } from '../fields.js';
 import { renderFieldControl, renderStatusControl, statusKey } from './fieldInputs.js';
 import { openFieldEditor } from './fieldEditor.js';
 import { chipHtml, avatarHtml, emptyHtml } from './common.js';
-import { openMenu, openPopover, closePopover, closeAllPopovers, confirmDialog, pushClosable, removeClosable } from './dialog.js';
+import { openMenu, openPopover, closePopover, closeAllPopovers, confirmDialog, openDialog, pushClosable, removeClosable } from './dialog.js';
 import { colorGridHtml, bindColorGrid } from './colorPicker.js';
 import { toast, toastError, toastSuccess } from './toast.js';
 
@@ -23,7 +25,7 @@ let cur = null;
 export function isCardModalOpen() { return !!cur; }
 export function currentCardId() { return cur?.cardId || null; }
 
-export function openCardModal(cardId) {
+export function openCardModal(cardId, { focusTitle = false } = {}) {
   if (cur) closeCardModal();
   const card = getCard(cardId);
   if (!card) return;
@@ -119,6 +121,14 @@ export function openCardModal(cardId) {
   loadActivity(ctx);
   refreshIcons();
   root.querySelector('.card-modal').scrollTop = 0;
+  if (focusTitle) {
+    setTimeout(() => {
+      const ta = root.querySelector('.card-modal__title');
+      if (!ta || cur !== ctx) return;
+      ta.focus();
+      ta.select();
+    }, 40);
+  }
 }
 
 export function closeCardModal() {
@@ -210,8 +220,9 @@ function setStatus(ctx, status) {
 function onCardsEvent(ctx) {
   const card = getCard(ctx.cardId);
   if (!card) {
+    const moved = state.movedAway.has(ctx.cardId);
     closeCardModal();
-    toast('Este card foi excluído.', { type: 'info' });
+    toast(moved ? 'Este card foi movido para outro board.' : 'Este card foi excluído.', { type: 'info' });
     return;
   }
   renderHead(ctx);
@@ -255,6 +266,7 @@ function renderHead(ctx) {
     </button>
     <div class="grow"></div>
     <span class="card-modal__save" id="cmSave"></span>
+    <button type="button" class="btn btn--ghost btn--icon" id="cmCopy" title="Duplicar ou mover">${icon('copy')}</button>
     <button type="button" class="btn btn--ghost btn--icon" id="cmArchive" title="${card.archived ? 'Restaurar' : 'Arquivar'}">${icon(card.archived ? 'archive-restore' : 'archive')}</button>
     <button type="button" class="btn btn--ghost btn--icon" id="cmDelete" title="Excluir">${icon('trash-2')}</button>
     <button type="button" class="btn btn--ghost btn--icon" id="cmClose" title="Fechar (Esc)">${icon('x')}</button>`;
@@ -269,6 +281,20 @@ function renderHead(ctx) {
     ], async (colId) => {
       if (colId === getCard(ctx.cardId)?.column_id) return;
       try { await moveCard(ctx.cardId, colId, cardsInColumn(colId).length); } catch (err) { toastError(err); }
+    });
+  });
+  head.querySelector('#cmCopy').addEventListener('click', (e) => {
+    const others = sortedBoards().filter((b) => b.id !== state.boardId).length;
+    openMenu(e.currentTarget, [
+      { label: 'Duplicar', header: true },
+      { label: 'Duplicar com informações', icon: 'copy', value: 'dup-full' },
+      { label: 'Duplicar só a estrutura', icon: 'layout-template', value: 'dup-struct' },
+      'sep',
+      { label: others ? 'Mover para outro board' : 'Mover para outro board (crie outro board antes)', icon: 'arrow-right-left', value: 'move', disabled: !others },
+    ], (v) => {
+      if (v === 'dup-full') duplicateFlow(ctx, true);
+      if (v === 'dup-struct') duplicateFlow(ctx, false);
+      if (v === 'move') openMoveDialog(ctx);
     });
   });
   head.querySelector('#cmArchive').addEventListener('click', async () => {
@@ -297,6 +323,108 @@ function renderHead(ctx) {
     } catch (err) { toastError(err); }
   });
   head.querySelector('#cmClose').addEventListener('click', closeCardModal);
+}
+
+/** Salva o que estiver pendente antes de copiar/mover (a cópia leva o estado atual). */
+async function flushNow(ctx) {
+  ctx.save.cancel();
+  await flush(ctx);
+}
+
+async function duplicateFlow(ctx, withValues) {
+  try {
+    await flushNow(ctx);
+    const copy = await duplicateCard(ctx.cardId, withValues);
+    toastSuccess(withValues ? 'Card duplicado.' : 'Estrutura do card duplicada.');
+    openCardModal(copy.id, { focusTitle: true });
+  } catch (e) { toastError(e); }
+}
+
+/** Modal "Mover para outro board": board + coluna de destino e resumo do que será criado. */
+async function openMoveDialog(ctx) {
+  await flushNow(ctx);
+  const boards = sortedBoards().filter((b) => b.id !== state.boardId);
+  if (!boards.length) { toast('Crie outro board antes de mover cards.', { type: 'warning' }); return; }
+  const cardId = ctx.cardId;
+  let ready = false;
+  const dlg = openDialog({
+    title: 'Mover para outro board',
+    size: 'md',
+    body: `
+      <div class="form-field">
+        <label for="mvBoard">Board de destino</label>
+        <select class="select" id="mvBoard">${boards.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select>
+      </div>
+      <div class="form-field">
+        <label for="mvColumn">Coluna</label>
+        <select class="select" id="mvColumn" disabled><option>Carregando…</option></select>
+      </div>
+      <div class="info-box" id="mvSummary"></div>`,
+    actions: [
+      { label: 'Cancelar', cls: 'btn--ghost', value: null },
+      { label: 'Mover', cls: 'btn--primary', value: 'ok', onClick: () => ready },
+    ],
+  });
+  const root = dlg.root;
+  const boardSel = root.querySelector('#mvBoard');
+  const colSel = root.querySelector('#mvColumn');
+  const summary = root.querySelector('#mvSummary');
+  const okBtn = root.querySelector('[data-action="1"]');
+  const setSummary = (ic, html, warn = false) => {
+    summary.className = `info-box${warn ? ' info-box--warn' : ''}`;
+    summary.innerHTML = `${icon(ic)}<span>${html}</span>`;
+    refreshIcons();
+  };
+  const list = (names) => names.map((n) => `<b>${esc(n)}</b>`).join(', ');
+
+  let seq = 0;
+  const load = async () => {
+    const my = ++seq;
+    ready = false;
+    okBtn.disabled = true;
+    colSel.disabled = true;
+    colSel.innerHTML = '<option>Carregando…</option>';
+    setSummary('loader-circle', 'Verificando campos e tags no destino…');
+    summary.querySelector('.ico')?.classList.add('spin');
+    try {
+      const [cols, preview] = await Promise.all([fetchColumns(boardSel.value), previewMoveCard(cardId, boardSel.value)]);
+      if (my !== seq) return;
+      if (!cols.length) {
+        colSel.innerHTML = '<option>Sem colunas</option>';
+        setSummary('triangle-alert', 'Esse board não tem colunas. Crie uma coluna nele antes de mover.', true);
+        return;
+      }
+      colSel.innerHTML = cols.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+      colSel.disabled = false;
+      const nf = preview?.fields_to_create || [];
+      const nt = preview?.tags_to_create || [];
+      const parts = [
+        nf.length
+          ? `${nf.length} ${nf.length === 1 ? 'campo será criado' : 'campos serão criados'} no board de destino: ${list(nf)}.`
+          : 'Todos os campos já existem lá.',
+      ];
+      if (nt.length) parts.push(`${nt.length} ${nt.length === 1 ? 'tag será criada' : 'tags serão criadas'}: ${list(nt)}.`);
+      setSummary(nf.length || nt.length ? 'info' : 'circle-check', parts.join(' '));
+      ready = true;
+      okBtn.disabled = false;
+    } catch (e) {
+      if (my !== seq) return;
+      setSummary('circle-alert', esc(e.message || 'Não foi possível verificar o destino.'), true);
+    }
+  };
+  boardSel.addEventListener('change', load);
+  load();
+
+  const r = await dlg.result;
+  if (r !== 'ok') return;
+  const boardId = boardSel.value;
+  const columnId = colSel.value;
+  const boardName = boards.find((b) => b.id === boardId)?.name || 'outro board';
+  if (cur === ctx) closeCardModal();
+  try {
+    await moveCardToBoard(cardId, boardId, columnId);
+    toastSuccess(`Card movido para "${boardName}".`);
+  } catch (e) { toastError(e); }
 }
 
 function renderTitle(ctx) {
@@ -623,8 +751,13 @@ function activityText(a) {
   const who = `<b>${esc(profileOf(a.user_id)?.name || 'Alguém')}</b>`;
   const p = a.payload || {};
   switch (a.type) {
-    case 'created': return `${who} criou o card`;
-    case 'moved': return `${who} moveu de <b>${esc(p.from_name || getColumn(p.from)?.name || '?')}</b> para <b>${esc(p.to_name || getColumn(p.to)?.name || '?')}</b>`;
+    case 'created':
+      if (p.duplicated_from) return `${who} criou o card duplicando outro card`;
+      if (p.duplicated_from_board) return `${who} criou o card ao duplicar o board`;
+      return `${who} criou o card`;
+    case 'moved':
+      if (p.to_board || p.to_board_name) return `${who} moveu do board <b>${esc(p.from_board_name || '?')}</b> para <b>${esc(p.to_board_name || '?')}</b>`;
+      return `${who} moveu de <b>${esc(p.from_name || getColumn(p.from)?.name || '?')}</b> para <b>${esc(p.to_name || getColumn(p.to)?.name || '?')}</b>`;
     case 'updated': return `${who} atualizou ${(p.fields || []).map((f) => `<b>${esc(f)}</b>`).join(', ') || 'o card'}`;
     case 'comment': return `${who} comentou`;
     case 'archived': return `${who} arquivou o card`;

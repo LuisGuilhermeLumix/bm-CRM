@@ -68,6 +68,16 @@ export function initials(name) {
   return (parts[0][0] + parts[parts.length - 1][0]).slice(0, 2);
 }
 
+/**
+ * Próxima cor da paleta de 12 que ainda não aparece em `used`. Quando todas
+ * já foram usadas, cicla pela paleta conforme a quantidade.
+ */
+export function nextPaletteColor(used = []) {
+  const taken = new Set(used.filter(Boolean).map((c) => String(c).toLowerCase()));
+  const free = PALETTE.find((p) => !taken.has(p.hex.toLowerCase()));
+  return (free || PALETTE[used.length % PALETTE.length]).hex;
+}
+
 export function randomPaletteColor() {
   return PALETTE[Math.floor(Math.random() * 10)].hex;
 }

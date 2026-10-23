@@ -1,7 +1,9 @@
 /* ============================================================================
    Lumix BM — design tokens
-   Tudo que é cor/tipografia/espaçamento mora aqui. O tema escuro é o padrão;
-   o claro é ativado com <html data-theme="light">.
+   Tudo que é cor/tipografia/espaçamento mora aqui. O tema escuro (preto) é o
+   padrão; o claro é ativado com <html data-theme="light">.
+   Contraste: todo texto sobre fundo foi conferido em ≥ 4.5:1 nos dois temas
+   (por isso alguns valores abaixo diferem levemente da paleta-base).
    ============================================================================ */
 
 :root {
@@ -21,37 +23,57 @@
   --fw-semibold: 600;
   --fw-bold: 700;
 
+  /* Paleta Lumix (da logo) */
+  --lx-cyan: #5ee7f0;
+  --lx-violet: #8b6cf6;
+  --lx-magenta: #e75ce0;
+  --lx-gradient: linear-gradient(135deg, var(--lx-cyan) 0%, var(--lx-violet) 50%, var(--lx-magenta) 100%);
+  --lx-gradient-soft: linear-gradient(135deg, rgba(94, 231, 240, 0.18), rgba(139, 108, 246, 0.18) 50%, rgba(231, 92, 224, 0.18));
+  /* Mesmo degradê com os tons escurecidos: usado onde há TEXTO BRANCO por cima
+     (botão primário, avatar). Branco sobre o degradê original fica entre 1.5:1
+     (ciano) e 3.8:1 (violeta); este passa de 5:1 em todos os pontos, inclusive
+     com o brilho do hover. */
+  --lx-gradient-strong: linear-gradient(135deg, #28707a 0%, #6648d6 50%, #a2399e 100%);
+  /* Degradê para texto (título "Lumix BM"): o original lê bem no preto. */
+  --lx-gradient-text: var(--lx-gradient);
+
   /* Superfícies */
-  --bg: #0b0f19;
-  --surface: #111827;
-  --surface-2: #1f2937;
-  --surface-3: #273449;
-  --surface-hover: rgba(255, 255, 255, 0.04);
-  --surface-active: rgba(255, 255, 255, 0.08);
-  --input-bg: #0d1322;
-  --overlay: rgba(2, 6, 23, 0.7);
+  --bg: #000000;
+  --surface: #0a0a0a;            /* sidebar, topo, colunas */
+  --surface-2: #121212;          /* cards, modais, popovers */
+  --surface-3: #1a1a1a;          /* inputs, hover */
+  --surface-hover: rgba(255, 255, 255, 0.05);
+  --surface-active: rgba(255, 255, 255, 0.09);
+  --input-bg: var(--surface-3);
+  --overlay: rgba(0, 0, 0, 0.72);
+  --column-bg: var(--surface);
+  --card-bg: var(--surface-2);
+  --modal-bg: var(--surface-2);
 
   /* Bordas */
-  --border: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.07);
   --border-strong: rgba(255, 255, 255, 0.12);
-  --border-focus: #6366f1;
+  --border-focus: var(--lx-violet);
 
   /* Texto */
-  --text: #e5e7eb;
-  --text-2: #9ca3af;
-  --text-3: #6b7280;
-  --text-inverse: #0b0f19;
+  --text: #f2f2f2;
+  --text-2: #a3a3a3;
+  --text-3: #858585;             /* #6b6b6b dava 3.3–3.9:1 nas superfícies; #858585 dá ≥ 4.7 */
+  --text-inverse: #000000;
 
   /* Destaque */
-  --accent: #6366f1;
-  --accent-hover: #4f46e5;
-  --accent-soft: rgba(99, 102, 241, 0.16);
-  --accent-ring: rgba(99, 102, 241, 0.35);
+  --accent: var(--lx-violet);
+  --accent-hover: #7a5cf0;
+  --accent-soft: rgba(139, 108, 246, 0.16);
+  --accent-ring: rgba(139, 108, 246, 0.35);
+  --accent-text: var(--lx-violet);   /* violeta como cor de texto (links, filtros ativos) */
+  --accent-strong: #6648d6;          /* fundo sólido com texto branco (badges) */
   --on-accent: #ffffff;
 
   /* Semânticas */
   --danger: #ef4444;
-  --danger-hover: #dc2626;
+  --danger-solid: #b91c1c;       /* botão de perigo (texto branco) */
+  --danger-hover: #991b1b;
   --danger-soft: rgba(239, 68, 68, 0.14);
   --success: #22c55e;
   --success-soft: rgba(34, 197, 94, 0.14);
@@ -73,6 +95,20 @@
   --c-gray: #6b7280;
   --c-brown: #9c6644;
 
+  /* Chips (tag / status / opção): fundo = cor a N%; texto = cor misturada
+     com branco (escuro) ou preto (claro) até passar 4.5:1 com as 12 cores. */
+  --chip-bg-pct: 15%;
+  --chip-fg-pct: 80%;
+  --chip-fg-toward: #ffffff;
+
+  /* Avatar sem foto */
+  --avatar-bg: var(--lx-gradient-strong);
+  --avatar-unknown-bg: var(--c-gray);
+
+  /* Scrollbar */
+  --scrollbar-thumb: var(--surface-3);
+  --scrollbar-thumb-hover: var(--lx-violet);
+
   /* Formas */
   --radius-sm: 6px;
   --radius: 10px;
@@ -80,13 +116,14 @@
   --radius-pill: 999px;
 
   /* Sombras */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.5);
-  --shadow-drag: 0 12px 28px rgba(0, 0, 0, 0.55);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.7);
+  --shadow-drag: 0 12px 28px rgba(0, 0, 0, 0.75);
 
   /* Movimento */
   --transition: 150ms ease;
+  --theme-transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
 
   /* Dimensões */
   --sidebar-w: 248px;
@@ -109,27 +146,44 @@
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --bg: #f5f6fa;
-  --surface: #ffffff;
-  --surface-2: #f3f4f6;
-  --surface-3: #e5e7eb;
-  --surface-hover: rgba(17, 24, 39, 0.04);
-  --surface-active: rgba(17, 24, 39, 0.08);
-  --input-bg: #ffffff;
-  --overlay: rgba(17, 24, 39, 0.45);
+  /* No branco, o ciano do degradê some como texto: usa a versão escurecida */
+  --lx-gradient-text: var(--lx-gradient-strong);
 
-  --border: #e5e7eb;
-  --border-strong: #d1d5db;
+  --bg: #f3f4f8;                 /* fundo geral levemente cinza-azulado */
+  --surface: #ffffff;            /* sidebar, topo */
+  --surface-2: #ffffff;          /* modais, popovers */
+  --surface-3: #f6f7fa;          /* inputs, hover */
+  --surface-hover: rgba(20, 22, 30, 0.04);
+  --surface-active: rgba(20, 22, 30, 0.07);
+  --input-bg: var(--surface-3);
+  --overlay: rgba(20, 22, 30, 0.4);
+  --column-bg: #eceef3;          /* colunas cinza, cards brancos com sombra */
+  --card-bg: #ffffff;
+  --modal-bg: var(--surface-2);
 
-  --text: #111827;
-  --text-2: #6b7280;
-  --text-3: #9ca3af;
+  --border: #e4e6ec;
+  --border-strong: #d2d5de;
+
+  --text: #15161a;
+  --text-2: #5c6170;
+  --text-3: #686c78;             /* #9096a6 dava 2.6–3.0:1; #686c78 dá ≥ 4.5 */
   --text-inverse: #ffffff;
 
-  --accent-soft: rgba(99, 102, 241, 0.12);
+  --accent-soft: rgba(139, 108, 246, 0.12);
+  --accent-text: #6c4fd6;        /* #8b6cf6 sobre branco dá 3.8:1 */
 
-  --shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.06);
-  --shadow-md: 0 4px 14px rgba(17, 24, 39, 0.08);
-  --shadow-lg: 0 16px 40px rgba(17, 24, 39, 0.16);
-  --shadow-drag: 0 12px 28px rgba(17, 24, 39, 0.2);
+  --danger: #c81e1e;             /* #ef4444 sobre branco dá 3.8:1 */
+  --success: #15803d;
+  --warning: #b45309;
+
+  --chip-bg-pct: 14%;
+  --chip-fg-pct: 55%;            /* escurece ~45% (âmbar e verde precisam disso no branco) */
+  --chip-fg-toward: #000000;
+
+  --scrollbar-thumb: var(--border-strong); /* surface-3 some sobre branco */
+
+  --shadow-sm: 0 1px 2px rgba(20, 22, 30, 0.06);
+  --shadow-md: 0 4px 12px rgba(20, 22, 30, 0.08);
+  --shadow-lg: 0 12px 32px rgba(20, 22, 30, 0.12);
+  --shadow-drag: 0 12px 28px rgba(20, 22, 30, 0.18);
 }

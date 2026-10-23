@@ -6,9 +6,9 @@
 import { sb } from './supabase.js';
 import {
   state, emit, upsertCard, removeCard, upsertColumn, removeColumn, upsertField, removeField,
-  upsertTag, removeTag, upsertBoard, removeBoard, getCard,
+  upsertTag, removeTag, upsertBoard, removeBoard, getCard, reindexColumnLocally,
 } from './state.js';
-import { normalizeCard } from './cards.js';
+import { normalizeCard, fetchCardById } from './cards.js';
 
 let boardChannel = null;
 let globalChannel = null;
@@ -21,7 +21,24 @@ function handle(table, payload) {
         if (removeCard(o.id)) emit('cards');
         return;
       }
-      if (n.board_id !== state.boardId) return;
+      if (n.board_id !== state.boardId) {
+        // o card foi movido para outro board: some daqui
+        const gone = getCard(n.id);
+        if (gone) {
+          state.movedAway.add(n.id);
+          removeCard(n.id);
+          reindexColumnLocally(gone.column_id);
+          emit('cards');
+        }
+        return;
+      }
+      if (eventType === 'UPDATE' && !getCard(n.id)) {
+        // chegou de outro board: busca a linha completa (com tags)
+        fetchCardById(n.id)
+          .then((card) => { if (card.board_id === state.boardId && upsertCard(card)) emit('cards'); })
+          .catch(() => {});
+        return;
+      }
       if (upsertCard(normalizeCard(n))) emit('cards');
       return;
     }
@@ -97,6 +114,11 @@ export function subscribeBoard(boardId) {
     boardChannel.on('postgres_changes', { event: '*', schema: 'public', table, filter }, (p) => handle(table, p));
   }
   boardChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'card_tags' }, (p) => handle('card_tags', p));
+  // UPDATE sem filtro: quando um card deste board é movido para outro, o
+  // board_id novo não bate com o filtro acima e o evento não chegaria.
+  boardChannel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'cards' }, (p) => {
+    if (p.new?.board_id !== state.boardId) handle('cards', p);
+  });
   boardChannel.subscribe((status) => {
     if (status === 'CHANNEL_ERROR') console.warn('realtime: erro no canal do board');
   });

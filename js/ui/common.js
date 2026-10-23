@@ -11,11 +11,12 @@ export function chipHtml(label, color, { removable = false, id = '', small = fal
 
 export function avatarHtml(profile, size = '') {
   const cls = `avatar ${size ? 'avatar--' + size : ''}`;
-  if (!profile) return `<span class="${cls}" style="--c:#6b7280" title="Usuário removido">?</span>`;
+  if (!profile) return `<span class="${cls} avatar--unknown" title="Usuário removido">?</span>`;
   if (profile.avatar_url) {
     return `<span class="${cls} avatar--img" title="${esc(profile.name)}"><img src="${esc(profile.avatar_url)}" alt="" /></span>`;
   }
-  return `<span class="${cls}" style="--c:${esc(profile.avatar_color || '#6366f1')}" title="${esc(profile.name)}">${esc(initials(profile.name))}</span>`;
+  // avatar_color continua no banco, mas o fundo vem do degradê Lumix (CSS)
+  return `<span class="${cls}" title="${esc(profile.name)}">${esc(initials(profile.name))}</span>`;
 }
 
 export function emptyHtml({ icon: ic = 'inbox', title = '', text = '', action = '', small = false }) {

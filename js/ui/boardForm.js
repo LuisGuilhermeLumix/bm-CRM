@@ -4,8 +4,22 @@ import { BOARD_ICONS } from '../utils.js';
 import { colorGridHtml, bindColorGrid } from './colorPicker.js';
 import { openDialog } from './dialog.js';
 import { toggleHtml } from './common.js';
-import { createBoard } from '../boards.js';
-import { toastError } from './toast.js';
+import { createBoard, duplicateBoard, openBoard } from '../boards.js';
+import { toast, toastError, toastSuccess } from './toast.js';
+
+/** Duplica o board e navega para a cópia. withCards = false: só estrutura. */
+export async function duplicateBoardFlow(boardId, withCards) {
+  toast(withCards ? 'Duplicando board com os cards…' : 'Duplicando a estrutura do board…', { type: 'info', duration: 2000 });
+  try {
+    const nb = await duplicateBoard(boardId, withCards);
+    await openBoard(nb.id);
+    toastSuccess(`Board "${nb.name}" criado.`);
+    return nb;
+  } catch (e) {
+    toastError(e);
+    return null;
+  }
+}
 
 export function iconGridHtml(current) {
   return `<div class="icon-grid">${BOARD_ICONS.map((n) => `

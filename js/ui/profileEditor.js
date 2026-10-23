@@ -50,11 +50,9 @@ export function openProfileEditor() {
     if (!p) { avatarBtn.innerHTML = ''; return; }
     if (p.avatar_url) {
       avatarBtn.className = 'profile-editor__avatar has-img';
-      avatarBtn.style.removeProperty('--c');
       avatarBtn.innerHTML = `<img src="${esc(p.avatar_url)}" alt="" /><span class="profile-editor__avatar-edit">${icon('camera', 'ico--sm')}</span>`;
     } else {
       avatarBtn.className = 'profile-editor__avatar';
-      avatarBtn.style.setProperty('--c', p.avatar_color || '#6366f1');
       avatarBtn.innerHTML = `<span class="profile-editor__initial">${esc(initials(p.name))}</span><span class="profile-editor__avatar-edit">${icon('camera', 'ico--sm')}</span>`;
     }
     remove.disabled = !p.avatar_url;

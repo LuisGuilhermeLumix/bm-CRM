@@ -17,6 +17,7 @@ export const state = {
   filters: { q: '', tagIds: [], statusKeys: [] }, // statusKeys: "<fieldId>:<optionId>"
   loadingBoard: false,
   dragging: false,       // true durante drag; renders ficam pendentes
+  movedAway: new Set(),  // ids de cards que saíram do board aberto por "mover para outro board"
   pendingRender: new Set(),
 };
 
