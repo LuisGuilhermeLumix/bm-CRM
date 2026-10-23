@@ -26,6 +26,7 @@ Stack: HTML + CSS + JavaScript vanilla (módulos ES, sem build), [Supabase](http
    - [`003_field_icon_status.sql`](supabase/migrations/003_field_icon_status.sql) — ícone por campo e status vinculado ao campo (colunas em `fields` + funções `remove_field_status_option` e `strip_field_values` atualizada).
    - [`004_profile_avatar.sql`](supabase/migrations/004_profile_avatar.sql) — foto de perfil (`profiles.avatar_url`) e políticas do bucket `avatars`. **Antes de rodar**, crie o bucket em Storage → New bucket → nome `avatars`, Public ligado.
    - [`005_per_card_fields.sql`](supabase/migrations/005_per_card_fields.sql) — campos por card (`cards.field_ids`, `fields.default_on_new_cards`, função `remove_field_from_card`, `strip_field_values` atualizada). Faz backfill: cards existentes recebem todos os campos do board.
+   - [`006_field_status_groups.sql`](supabase/migrations/006_field_status_groups.sql) — vários grupos de status por campo (`fields.statuses`), cada um único ou múltiplo. Migra o status antigo para um grupo e as chaves dos cards para `<field_id>:status:<group_id>`; nova assinatura de `remove_field_status_option`.
 5. Confirme em **Database → Replication** (ou **Realtime**) que as tabelas `cards`, `columns`, `fields`, `tags`, `card_tags` e `boards` estão publicadas em `supabase_realtime`. O script já faz isso; só confira se o Realtime está habilitado no projeto.
 
 ## 2. Criar os usuários e desabilitar o cadastro público
@@ -166,4 +167,5 @@ supabase/migrations/002_access_allowlist.sql   lista de permitidos (profiles.all
 supabase/migrations/003_field_icon_status.sql  ícone por campo + status vinculado
 supabase/migrations/004_profile_avatar.sql     foto de perfil + bucket avatars
 supabase/migrations/005_per_card_fields.sql    campos por card (cards.field_ids)
+supabase/migrations/006_field_status_groups.sql grupos de status por campo (fields.statuses)
 ```

@@ -4,6 +4,7 @@ import {
   state, emit, upsertCard, removeCard, getCard, getTag, getField, cardsInColumn, reindexColumnLocally, sortedFields,
 } from './state.js';
 import { formatCurrency, formatNumber, formatDateBR } from './utils.js';
+import { fieldStatuses, statusKeyOf, statusPrefixOf, statusValueIds } from './fields.js';
 
 /** Busca todos os cards do board (inclusive arquivados) com os ids das tags. */
 export async function fetchCards(boardId) {
@@ -64,8 +65,8 @@ export async function removeFieldFromCard(cardId, fieldId) {
   if (!card) return;
   const before = { field_ids: card.field_ids, values: { ...card.values } };
   card.field_ids = card.field_ids.filter((id) => id !== fieldId);
-  delete card.values[fieldId];
-  delete card.values[`${fieldId}:status`];
+  const prefix = statusPrefixOf(fieldId);
+  for (const k of Object.keys(card.values)) if (k === fieldId || k.startsWith(prefix)) delete card.values[k];
   emit('cards');
   try {
     const row = await run(sb.rpc('remove_field_from_card', { p_card_id: cardId, p_field_id: fieldId }));
@@ -233,21 +234,26 @@ export function valueToSearchText(field, value) {
   }
 }
 
-/** Rótulo da opção de status escolhida para o campo (ou ''). */
+/** Rótulos de todas as opções de status selecionadas no campo, em todos os grupos (ou ''). */
 export function statusLabelOf(field, values) {
-  if (!field.status_enabled) return '';
-  const id = values?.[`${field.id}:status`];
-  return id ? (field.status_options || []).find((o) => o.id === id)?.label || '' : '';
+  const out = [];
+  for (const g of fieldStatuses(field)) {
+    const ids = statusValueIds(values?.[statusKeyOf(field.id, g.id)]);
+    for (const id of ids) {
+      const o = (g.options || []).find((x) => x.id === id);
+      if (o) out.push(o.label);
+    }
+  }
+  return out.join(' ');
 }
 
 export function cardMatchesFilters(card) {
   const { q, tagIds, statusKeys = [] } = state.filters;
   if (tagIds.length && !tagIds.some((t) => card.tag_ids?.includes(t))) return false;
-  // statusKeys: "<fieldId>:<optionId>" — basta uma bater (OU), como nas tags
+  // statusKeys: "<fieldId>:<groupId>:<optionId>" — basta uma bater (OU), como nas tags
   if (statusKeys.length && !statusKeys.some((k) => {
-    const i = k.indexOf(':');
-    const fieldId = k.slice(0, i), optionId = k.slice(i + 1);
-    return card.values?.[`${fieldId}:status`] === optionId;
+    const [fieldId, groupId, optionId] = k.split(':');
+    return statusValueIds(card.values?.[statusKeyOf(fieldId, groupId)]).includes(optionId);
   })) return false;
   if (q) {
     const needle = q.trim().toLowerCase();

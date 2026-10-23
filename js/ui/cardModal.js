@@ -10,7 +10,7 @@ import {
   cardFields, addFieldToCard, removeFieldFromCard, reorderCardFields,
 } from '../cards.js';
 import { addTagToCard, removeTagFromCard, createTag } from '../tags.js';
-import { isEmptyValue } from '../fields.js';
+import { isEmptyValue, fieldStatuses, statusPrefixOf } from '../fields.js';
 import { renderFieldControl, renderStatusControl, statusKey } from './fieldInputs.js';
 import { openFieldEditor } from './fieldEditor.js';
 import { chipHtml, avatarHtml, emptyHtml } from './common.js';
@@ -330,7 +330,7 @@ function renderArchived(ctx) {
 // Campos
 // ----------------------------------------------------------------------------
 function fieldSig(f) {
-  return JSON.stringify([f.name, f.type, f.icon, f.required, f.show_on_card, f.options, f.status_enabled, f.status_label, f.status_options]);
+  return JSON.stringify([f.name, f.type, f.icon, f.required, f.show_on_card, f.options, f.statuses]);
 }
 
 function renderFieldRow(ctx, f) {
@@ -357,10 +357,15 @@ function renderFieldRow(ctx, f) {
   });
   control.appendChild(hint);
   wrap.appendChild(control);
-  if (f.status_enabled) {
-    wrap.appendChild(renderStatusControl(f, values[statusKey(f.id)], (v) => {
-      queueValue(ctx, statusKey(f.id), v, `${f.name} › ${f.status_label || 'Status'}`);
-    }));
+  const groups = fieldStatuses(f);
+  if (groups.length) {
+    const chips = el('<div class="status-chips"></div>');
+    for (const g of groups) {
+      chips.appendChild(renderStatusControl(f, g, values[statusKey(f.id, g.id)], (v) => {
+        queueValue(ctx, statusKey(f.id, g.id), v, `${f.name} › ${g.label || 'Status'}`);
+      }));
+    }
+    wrap.appendChild(chips);
   }
   row.appendChild(wrap);
   row.querySelector('[data-edit-field]').addEventListener('click', (e) => openFieldEditor(e.currentTarget, { fieldId: f.id }));
@@ -371,7 +376,8 @@ function renderFieldRow(ctx, f) {
 /** Remove o campo só deste card (a definição continua no board). */
 async function askRemoveField(ctx, f) {
   const values = effectiveValues(ctx);
-  const hasValue = !isEmptyValue(values[f.id]) || !!values[statusKey(f.id)];
+  const prefix = statusPrefixOf(f.id);
+  const hasValue = !isEmptyValue(values[f.id]) || Object.keys(values).some((k) => k.startsWith(prefix) && !isEmptyValue(values[k]));
   const ok = await confirmDialog({
     title: 'Remover campo deste card',
     message: `Tirar "<b>${esc(f.name)}</b>" deste card?${hasValue ? ' O valor preenchido aqui será apagado.' : ''} O campo continua existindo no board e nos outros cards.`,
@@ -380,7 +386,7 @@ async function askRemoveField(ctx, f) {
   if (!ok) return;
   // descarta digitação pendente desse campo, para o flush não recriar a chave
   delete ctx.pending.values[f.id];
-  delete ctx.pending.values[statusKey(f.id)];
+  for (const k of Object.keys(ctx.pending.values)) if (k.startsWith(prefix)) delete ctx.pending.values[k];
   try {
     await removeFieldFromCard(ctx.cardId, f.id);
   } catch (e) { toastError(e); }

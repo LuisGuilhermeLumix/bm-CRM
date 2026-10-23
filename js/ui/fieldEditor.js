@@ -1,13 +1,13 @@
 // Editor de definição de campo (popover). Fonte única da UI de campo: usado
 // pelo modal do card (lápis / "+ Adicionar campo") e pelo painel Configurar
-// board → Campos. Inclui o editor de opções (select/multiselect e status).
+// board → Campos. Inclui o editor de opções (select/multiselect e grupos de status).
 import Sortable from 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/modular/sortable.esm.js';
 import { icon, refreshIcons, fieldIconName } from './icons.js';
 import { esc, uid, randomPaletteColor } from '../utils.js';
 import { state, getField } from '../state.js';
 import {
-  FIELD_TYPES, createField, updateField, deleteField, fieldUsage, optionUsage, statusOptionUsage,
-  purgeOptionValues, purgeStatusOptionValues,
+  FIELD_TYPES, createField, updateField, deleteField, fieldUsage, optionUsage, statusOptionUsage, statusGroupUsage,
+  purgeOptionValues, purgeStatusOptionValues, fieldStatuses,
 } from '../fields.js';
 import { toggleHtml } from './common.js';
 import { fieldCardUsage } from '../cards.js';
@@ -84,7 +84,7 @@ export function bindOptionsEditor(container, options, { onStructureChange, sorta
 function emptyDraft() {
   return {
     name: '', type: 'text', icon: null, show_on_card: true, required: false, options: [],
-    status_enabled: false, status_label: 'Status', status_options: [],
+    statuses: [],
     default_on_new_cards: true,
   };
 }
@@ -93,8 +93,9 @@ function draftFrom(f) {
   return {
     name: f.name, type: f.type, icon: f.icon || null, show_on_card: !!f.show_on_card, required: !!f.required,
     options: (f.options || []).map((o) => ({ ...o })),
-    status_enabled: !!f.status_enabled, status_label: f.status_label || 'Status',
-    status_options: (f.status_options || []).map((o) => ({ ...o })),
+    statuses: fieldStatuses(f).map((g) => ({
+      id: g.id, label: g.label || '', multiple: !!g.multiple, options: (g.options || []).map((o) => ({ ...o })),
+    })),
     default_on_new_cards: f.default_on_new_cards !== false,
   };
 }
@@ -118,10 +119,20 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
     if (q('#feShow')) d.show_on_card = q('#feShow').checked;
     if (q('#feReq')) d.required = q('#feReq').checked;
     if (q('#feDefault')) d.default_on_new_cards = q('#feDefault').checked;
-    if (q('#feStatus')) d.status_enabled = q('#feStatus').checked;
-    if (q('#feStatusLabel')) d.status_label = q('#feStatusLabel').value;
     const oe = q('[data-oe="options"]'); if (oe) readOptionsEditor(oe, d.options);
-    const se = q('[data-oe="status_options"]'); if (se) readOptionsEditor(se, d.status_options);
+    // grupos de status: rótulo, modo e opções de cada um, na ordem do DOM
+    const rows = [...pop.querySelectorAll('[data-sg-id]')];
+    for (const row of rows) {
+      const g = d.statuses.find((x) => x.id === row.dataset.sgId);
+      if (!g) continue;
+      g.label = row.querySelector('[data-sg-label]').value;
+      g.multiple = row.querySelector('input[name="sg-multi"]').checked;
+      const se = row.querySelector(`[data-oe="sg:${g.id}"]`); if (se) readOptionsEditor(se, g.options);
+    }
+    if (rows.length) {
+      const order = rows.map((r) => r.dataset.sgId);
+      d.statuses.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+    }
   };
 
   const paint = ({ focus = null } = {}) => {
@@ -172,16 +183,19 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
 
         <div class="field-editor__section">
           <div class="section__title">${icon('circle-dot')} Status</div>
-          ${toggleHtml({ id: 'feStatus', label: 'Vincular status a este campo', checked: d.status_enabled })}
-          ${d.status_enabled ? `
-            <div class="form-field">
-              <label>Rótulo</label>
-              <input class="input input--sm" id="feStatusLabel" value="${esc(d.status_label)}" placeholder="Status" autocomplete="off" />
-            </div>
-            <div class="form-field">
-              <label>Opções de status</label>
-              ${optionsEditorHtml(d.status_options, 'status_options', { placeholder: 'Ex.: Ativa' })}
-            </div>` : '<p class="hint">Ex.: Empresa com Ativa / Cancelada / Pausada; Telefone com Válido / Inválido.</p>'}
+          ${d.statuses.length ? `<div class="status-groups" id="feGroups">
+            ${d.statuses.map((g) => `
+              <div class="status-group" data-sg-id="${esc(g.id)}">
+                <div class="status-group__head">
+                  <span class="handle" title="Arrastar para reordenar">${icon('grip-vertical')}</span>
+                  <input class="input input--sm grow" data-sg-label value="${esc(g.label)}" placeholder="Rótulo (ex.: Situação)" autocomplete="off" />
+                  <button type="button" class="btn btn--ghost btn--icon btn--sm" data-sg-rm title="Remover grupo">${icon('x')}</button>
+                </div>
+                ${toggleHtml({ id: `sgm-${g.id}`, name: 'sg-multi', label: 'Permitir várias', checked: g.multiple })}
+                ${optionsEditorHtml(g.options, `sg:${g.id}`, { placeholder: 'Ex.: Ativa' })}
+              </div>`).join('')}
+          </div>` : '<p class="hint">Sem grupos = sem status. Ex.: Empresa → "Situação" (Ativa/Cancelada), "Prioridade" (Alta/Média/Baixa) e "Pendências" (Contrato/NF, várias).</p>'}
+          <div><button type="button" class="btn btn--sm" id="feAddGroup">${icon('plus', 'ico--sm')} Adicionar grupo de status</button></div>
         </div>
 
         <div class="field-editor__foot">
@@ -198,6 +212,8 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
     else if (focus?.startsWith?.('lastopt:')) {
       const inputs = pop.querySelectorAll(`[data-oe="${focus.slice(8)}"] [data-opt-id] input`);
       inputs[inputs.length - 1]?.focus();
+    } else if (focus?.startsWith?.('group:')) {
+      pop.querySelector(`[data-sg-id="${focus.slice(6)}"] [data-sg-label]`)?.focus();
     } else if (focus) pop.querySelector(focus)?.focus();
   };
 
@@ -210,11 +226,45 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
       openIconPicker(e.currentTarget, d.icon, (name) => { read(); d.icon = name; paint(); }, { nested: true, allowDefault: true });
     });
     q('#feType').addEventListener('change', () => rerender('#feType'));
-    q('#feStatus').addEventListener('change', () => rerender(q('#feStatus').checked ? '#feStatusLabel' : '#feStatus'));
     const oe = q('[data-oe="options"]');
     if (oe) bindOptionsEditor(oe, d.options, { sortables, onStructureChange: (o) => rerender(o?.focusLast ? 'lastopt:options' : null) });
-    const se = q('[data-oe="status_options"]');
-    if (se) bindOptionsEditor(se, d.status_options, { sortables, onStructureChange: (o) => rerender(o?.focusLast ? 'lastopt:status_options' : null) });
+
+    // grupos de status
+    const groupsHost = q('#feGroups');
+    if (groupsHost) {
+      sortables.push(new Sortable(groupsHost, {
+        handle: '.status-group__head > .handle', draggable: '.status-group', animation: 150, ghostClass: 'sortable-ghost',
+        onEnd: () => read(),
+      }));
+    }
+    for (const g of d.statuses) {
+      const se = q(`[data-oe="sg:${g.id}"]`);
+      if (se) bindOptionsEditor(se, g.options, { sortables, onStructureChange: (o) => rerender(o?.focusLast ? `lastopt:sg:${g.id}` : null) });
+      const row = q(`[data-sg-id="${g.id}"]`);
+      row?.querySelector('[data-sg-label]').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); se?.querySelector('[data-opt-add]')?.click(); }
+      });
+      row?.querySelector('[data-sg-rm]').addEventListener('click', async () => {
+        read();
+        const n = fieldId ? statusGroupUsage(fieldId, g.id) : 0;
+        if (n) {
+          const ok = await confirmDialog({
+            title: 'Remover grupo de status?',
+            message: `"<b>${esc(g.label || 'Status')}</b>" tem valor em ${n} ${n === 1 ? 'card' : 'cards'}. Ao salvar, esse status será apagado desses cards.`,
+            confirmText: 'Remover',
+          });
+          if (!ok) return;
+        }
+        d.statuses = d.statuses.filter((x) => x.id !== g.id);
+        paint();
+      });
+    }
+    q('#feAddGroup').addEventListener('click', () => {
+      read();
+      const g = { id: uid(), label: '', multiple: false, options: [] };
+      d.statuses.push(g);
+      paint({ focus: `group:${g.id}` });
+    });
     q('#feCancel').addEventListener('click', () => closePopover(pop));
     q('#feSave').addEventListener('click', save);
     q('#feDelete')?.addEventListener('click', remove);
@@ -233,9 +283,9 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
       show_on_card: d.show_on_card,
       required: d.required,
       options: isSel ? clean(d.options) : [],
-      status_enabled: d.status_enabled,
-      status_label: (d.status_label || '').trim() || 'Status',
-      status_options: d.status_enabled ? clean(d.status_options) : (field?.status_options || []),
+      statuses: d.statuses.map((g) => ({
+        id: g.id, label: (g.label || '').trim() || 'Status', multiple: !!g.multiple, options: clean(g.options),
+      })),
       default_on_new_cards: d.default_on_new_cards,
     };
     const btn = pop.querySelector('#feSave');
@@ -252,14 +302,29 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
         // opções (select) removidas que estão em uso
         const removedOpts = (f.options || []).filter((o) => !payload.options.some((x) => x.id === o.id));
         const optsInUse = isSel ? removedOpts.map((o) => ({ o, n: optionUsage(fieldId, o.id) })).filter((x) => x.n > 0) : [];
-        // opções de status removidas que estão em uso
-        const removedStatus = (f.status_options || []).filter((o) => !payload.status_options.some((x) => x.id === o.id));
-        const statusInUse = removedStatus.map((o) => ({ o, n: statusOptionUsage(fieldId, o.id) })).filter((x) => x.n > 0);
+        // grupos de status removidos (já confirmados ao clicar no X): limpa cada opção em uso
+        const oldGroups = fieldStatuses(f);
+        const removedGroups = oldGroups.filter((g) => !payload.statuses.some((x) => x.id === g.id));
+        const groupPurges = [];
+        for (const g of removedGroups) {
+          for (const o of g.options || []) if (statusOptionUsage(fieldId, g.id, o.id) > 0) groupPurges.push({ g, o });
+        }
+        // opções de status removidas de grupos que continuam, em uso → confirmar
+        const statusInUse = [];
+        for (const g of oldGroups) {
+          const kept = payload.statuses.find((x) => x.id === g.id);
+          if (!kept) continue;
+          for (const o of g.options || []) {
+            if (kept.options.some((x) => x.id === o.id)) continue;
+            const n = statusOptionUsage(fieldId, g.id, o.id);
+            if (n > 0) statusInUse.push({ g, o, n });
+          }
+        }
 
         if (optsInUse.length || statusInUse.length) {
           const lines = [
             ...optsInUse.map((x) => `"<b>${esc(x.o.label)}</b>" é usada em ${x.n} ${x.n === 1 ? 'card' : 'cards'}`),
-            ...statusInUse.map((x) => `status "<b>${esc(x.o.label)}</b>" é usado em ${x.n} ${x.n === 1 ? 'card' : 'cards'}`),
+            ...statusInUse.map((x) => `${esc(x.g.label || 'Status')} "<b>${esc(x.o.label)}</b>" é usado em ${x.n} ${x.n === 1 ? 'card' : 'cards'}`),
           ];
           const ok = await confirmDialog({
             title: 'Remover opções em uso?',
@@ -267,9 +332,10 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
             confirmText: 'Remover e salvar',
           });
           if (!ok) { btn.disabled = false; return; }
-          for (const x of optsInUse) await purgeOptionValues(fieldId, x.o.id);
-          for (const x of statusInUse) await purgeStatusOptionValues(fieldId, x.o.id);
         }
+        for (const x of optsInUse) await purgeOptionValues(fieldId, x.o.id);
+        for (const x of statusInUse) await purgeStatusOptionValues(fieldId, x.g.id, x.o.id);
+        for (const x of groupPurges) await purgeStatusOptionValues(fieldId, x.g.id, x.o.id);
         saved = await updateField(fieldId, payload);
         toastSuccess('Campo salvo.');
       }

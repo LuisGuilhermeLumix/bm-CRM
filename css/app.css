@@ -733,3 +733,24 @@ kbd { font-family: inherit; font-size: var(--fs-xs); border: 1px solid var(--bor
 .field-row__action--danger:hover { background: var(--danger-soft); color: var(--danger); }
 .settings-row__sub .toggle { font-size: var(--fs-sm); }
 .settings-row__sub .toggle__track { transform: scale(0.85); transform-origin: left center; }
+
+/* ---------- Grupos de status ---------- */
+.status-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-width: 0; }
+.field-row__control-wrap .status-chips { padding-left: 6px; }
+.status-chip { margin-left: 0; }
+.status-chip .dot { width: 8px; height: 8px; }
+.status-chip .dot + .dot { margin-left: -3px; }
+.card__field { flex-wrap: wrap; }
+.card__field .chip { margin-left: 0; }
+.card__field .status-chips { gap: 3px; }
+.menu__item .dot + .dot { margin-left: -4px; }
+.status-groups { display: flex; flex-direction: column; gap: 10px; }
+.status-group {
+  display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--surface);
+}
+.status-group.sortable-ghost { opacity: 0.4; }
+.status-group__head { display: flex; align-items: center; gap: 6px; }
+.status-group__head > .handle { color: var(--text-3); cursor: grab; display: inline-flex; padding: 2px; }
+.status-group__head > .handle:active { cursor: grabbing; }
+.status-group .toggle { font-size: var(--fs-sm); }

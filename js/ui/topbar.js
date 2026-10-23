@@ -6,6 +6,7 @@ import { state, on, getBoard, setFilters, sortedTags, sortedColumns, sortedField
 import { updateBoard } from '../boards.js';
 import { createCard } from '../cards.js';
 import { openPopover, openDialog } from './dialog.js';
+import { fieldStatuses } from '../fields.js';
 import { toast, toastError } from './toast.js';
 import { toggleSidebar } from './sidebar.js';
 import { openBoardSettings } from './boardSettings.js';
@@ -168,12 +169,13 @@ function openTagFilter(anchor) {
   });
 }
 
-/** Todas as opções de status do board: [{ key: "<fieldId>:<optionId>", field, option }] */
+/** Todas as opções de status do board: [{ key: "<fieldId>:<groupId>:<optionId>", field, group, option }] */
 function statusEntries() {
   const out = [];
   for (const f of sortedFields()) {
-    if (!f.status_enabled) continue;
-    for (const o of f.status_options || []) out.push({ key: `${f.id}:${o.id}`, field: f, option: o });
+    for (const g of fieldStatuses(f)) {
+      for (const o of g.options || []) out.push({ key: `${f.id}:${g.id}:${o.id}`, field: f, group: g, option: o });
+    }
   }
   return out;
 }
@@ -181,21 +183,24 @@ function statusEntries() {
 function openStatusFilter(anchor) {
   const paint = (pop) => {
     const sel = state.filters.statusKeys;
-    const fields = sortedFields().filter((f) => f.status_enabled);
+    const groups = [];
+    for (const f of sortedFields()) for (const g of fieldStatuses(f)) groups.push({ f, g });
     pop.querySelector('.menu').innerHTML = `
-      ${fields.map((f) => `
-        <div class="menu__label">${esc(f.name)} › ${esc(f.status_label || 'Status')}</div>
-        ${(f.status_options || []).map((o) => {
-          const key = `${f.id}:${o.id}`;
+      ${groups.map(({ f, g }) => `
+        <div class="menu__label">${esc(f.name)} › ${esc(g.label || 'Status')}</div>
+        ${(g.options || []).map((o) => {
+          const key = `${f.id}:${g.id}:${o.id}`;
           return `<button type="button" class="menu__item ${sel.includes(key) ? 'is-selected' : ''}" data-key="${esc(key)}">
             ${chipHtml(o.label, o.color)}${sel.includes(key) ? icon('check', 'check ico--sm') : ''}
           </button>`;
         }).join('') || '<div class="popover__empty">Sem opções ainda.</div>'}`).join('')}
-      ${!fields.length ? '<div class="popover__empty">Nenhum campo com status neste board. Ative em "Editar campo" → Status.</div>' : ''}
+      ${!groups.length ? '<div class="popover__empty">Nenhum campo com status neste board. Adicione um grupo em "Editar campo" → Status.</div>' : ''}
       ${sel.length ? `<div class="menu__sep"></div><button type="button" class="menu__item" data-clear>${icon('x')}<span>Limpar filtro</span></button>` : ''}`;
     refreshIcons();
   };
-  const pop = openPopover(anchor, '<div class="menu"></div>', { align: 'end', cls: 'popover--wide' });
+  let off = null;
+  const pop = openPopover(anchor, '<div class="menu"></div>', { align: 'end', cls: 'popover--wide', onClose: () => off?.() });
+  off = on('fields', () => paint(pop)); // definição mudou (realtime) → repinta
   paint(pop);
   pop.addEventListener('click', (e) => {
     const b = e.target.closest('[data-key]');

@@ -1,24 +1,34 @@
 // Renderização dos campos personalizados: resumo no card do kanban e
-// controles de edição no modal (um para cada tipo), mais o chip de status.
+// controles de edição no modal (um para cada tipo), mais os chips de status
+// (um por grupo de status do campo; valor em "<field_id>:status:<group_id>").
 import { icon, refreshIcons, fieldIconName, FIELD_TYPE_ICONS } from './icons.js';
 import { chipHtml } from './common.js';
 import {
   esc, el, formatCurrency, formatNumber, parseNumber, formatDateBR, dateDistance,
   whatsappLink, normalizeUrl, hostnameOf, autoResize, uid, randomPaletteColor,
 } from '../utils.js';
-import { updateField, isEmptyValue } from '../fields.js';
-import { getField } from '../state.js';
-import { openPopover, closePopover, openMenu } from './dialog.js';
+import { updateField, isEmptyValue, fieldStatuses, statusKeyOf, statusValueIds } from '../fields.js';
+import { getField, on } from '../state.js';
+import { openPopover, closePopover } from './dialog.js';
 import { toastError } from './toast.js';
 
 export const fieldIcon = (type) => FIELD_TYPE_ICONS[type] || 'type';
-export const statusKey = (fieldId) => `${fieldId}:status`;
+export const statusKey = statusKeyOf;
 
 export function optionById(field, id) {
   return (field?.options || []).find((o) => o.id === id) || null;
 }
-export function statusOptionById(field, id) {
-  return (field?.status_options || []).find((o) => o.id === id) || null;
+/** Opções selecionadas de um grupo, na ordem do grupo (aceita string ou array). */
+export function selectedStatusOptions(group, value) {
+  const ids = statusValueIds(value);
+  return (group?.options || []).filter((o) => ids.includes(o.id));
+}
+/** HTML dos chips de status de um campo (todos os grupos com algo selecionado). */
+export function statusChipsHtml(field, values, { small = false } = {}) {
+  return fieldStatuses(field).map((g) => {
+    const sel = selectedStatusOptions(g, values?.[statusKeyOf(field.id, g.id)]);
+    return sel.map((o) => chipHtml(o.label, o.color, { small, title: `${g.label || 'Status'}: ${o.label}` })).join('');
+  }).join('');
 }
 
 const PLACEHOLDERS = {
@@ -29,7 +39,7 @@ const PLACEHOLDERS = {
 // ----------------------------------------------------------------------------
 // Resumo compacto para o card no kanban.
 // fieldSummaryHtml(field, values) — `values` é o jsonb inteiro do card, porque
-// o status mora na chave "<field_id>:status". Retorna '' quando não há nada.
+// os status moram em "<field_id>:status:<group_id>". Retorna '' quando não há nada.
 // ----------------------------------------------------------------------------
 function summaryValue(field, value) {
   if (isEmptyValue(value)) return null;
@@ -57,12 +67,12 @@ function summaryValue(field, value) {
 
 export function fieldSummaryHtml(field, values) {
   const v = summaryValue(field, values?.[field.id]);
-  const st = field.status_enabled ? statusOptionById(field, values?.[statusKey(field.id)]) : null;
-  if (!v && !st) return '';
-  return `<div class="card__field ${v?.cls || ''}" title="${esc(field.name)}${st ? ` · ${esc(field.status_label || 'Status')}: ${esc(st.label)}` : ''}">
+  const chips = statusChipsHtml(field, values, { small: true });
+  if (!v && !chips) return '';
+  return `<div class="card__field ${v?.cls || ''}" title="${esc(field.name)}">
     ${icon(fieldIconName(field))}
     ${v ? v.html : `<span class="muted">${esc(field.name)}</span>`}
-    ${st ? chipHtml(st.label, st.color, { small: true }) : ''}
+    ${chips ? `<span class="status-chips">${chips}</span>` : ''}
   </div>`;
 }
 
@@ -254,45 +264,109 @@ function multiControl(field, value, onChange) {
 }
 
 // ----------------------------------------------------------------------------
-// Chip de status vinculado ao campo (valor em "<field_id>:status")
+// Chip de status de UM grupo do campo (valor em "<field_id>:status:<group_id>").
+// Grupo único: dropdown com as opções + "Sem status" (valor = id ou null).
+// Grupo múltiplo: dropdown com checkboxes (valor = array de ids ou null).
+// O chip mostra até 2 opções, depois "+N". Lê a definição ao vivo (getField),
+// então mudanças via realtime repintam o chip e o popover aberto.
 // ----------------------------------------------------------------------------
-export function renderStatusControl(field, value, onChange) {
-  const btn = el('<button type="button" class="status-chip chip" title="Status"></button>');
-  let current = value || null;
-  const live = () => getField(field.id) || field;
+export function renderStatusControl(field, group, value, onChange) {
+  const btn = el('<button type="button" class="status-chip chip"></button>');
+  let current = Array.isArray(value) ? [...value] : (value || null);
+  const liveGroup = () => fieldStatuses(getField(field.id) || field).find((g) => g.id === group.id) || group;
+
   const paint = () => {
-    const f = live();
-    const o = statusOptionById(f, current);
-    btn.title = f.status_label || 'Status';
-    if (o) {
+    const g = liveGroup();
+    const sel = selectedStatusOptions(g, current);
+    btn.title = g.label || 'Status';
+    if (sel.length) {
       btn.className = 'status-chip chip';
-      btn.style.setProperty('--c', o.color);
-      btn.innerHTML = `<span class="dot"></span><span class="truncate">${esc(o.label)}</span>${icon('chevron-down', 'ico--sm')}`;
+      btn.style.setProperty('--c', sel[0].color);
+      const shown = sel.slice(0, 2);
+      btn.innerHTML = `
+        ${shown.map((o) => `<span class="dot" style="--c:${esc(o.color)}"></span>`).join('')}
+        <span class="truncate">${esc(shown.map((o) => o.label).join(', '))}${sel.length > 2 ? ` +${sel.length - 2}` : ''}</span>
+        ${icon('chevron-down', 'ico--sm')}`;
     } else {
       btn.className = 'status-chip chip chip--btn';
       btn.style.removeProperty('--c');
-      btn.innerHTML = `<span class="truncate">${esc(f.status_label || 'Status')}</span>${icon('chevron-down', 'ico--sm')}`;
+      btn.innerHTML = `<span class="truncate">${esc(g.label || 'Status')}</span>${icon('chevron-down', 'ico--sm')}`;
     }
     refreshIcons();
   };
+
   btn.addEventListener('click', () => {
-    const f = live();
-    const opts = f.status_options || [];
-    openMenu(btn, [
-      { label: f.status_label || 'Status', header: true },
-      ...(opts.length
-        ? opts.map((o) => ({ label: o.label, color: o.color, value: o.id, selected: o.id === current }))
-        : [{ label: 'Nenhuma opção. Edite o campo para adicionar.', disabled: true, value: '__none' }]),
-      'sep',
-      { label: 'Sem status', icon: 'x', value: '__none' },
-    ], (v) => {
-      current = v === '__none' ? null : v;
+    openStatusPicker(btn, field, group.id, current, (v) => {
+      current = v;
       paint();
       onChange(current);
     });
   });
   paint();
   return btn;
+}
+
+/**
+ * Popover de escolha de status de um grupo. Fica aberto enquanto o grupo for
+ * múltiplo (checkboxes); fecha ao escolher quando é único. Repinta se a
+ * definição do campo mudar (realtime) enquanto está aberto.
+ */
+export function openStatusPicker(anchor, field, groupId, value, onChange) {
+  let current = Array.isArray(value) ? [...value] : (value || null);
+  const liveGroup = () => fieldStatuses(getField(field.id) || field).find((g) => g.id === groupId);
+  let off = null;
+  const pop = openPopover(anchor, '<div class="menu"></div>', { onClose: () => off?.() });
+  const menu = pop.querySelector('.menu');
+
+  const paint = () => {
+    const g = liveGroup();
+    if (!g) { closePopover(pop); return; }
+    const ids = statusValueIds(current);
+    const opts = g.options || [];
+    menu.innerHTML = `
+      <div class="menu__label">${esc(g.label || 'Status')}${g.multiple ? ' · várias' : ''}</div>
+      ${opts.length ? opts.map((o) => {
+        const on = ids.includes(o.id);
+        return `<button type="button" class="menu__item ${on ? 'is-selected' : ''}" data-opt="${esc(o.id)}">
+          ${g.multiple ? icon(on ? 'square-check' : 'square', 'ico--sm') : `<span class="dot" style="--c:${esc(o.color)}"></span>`}
+          ${g.multiple ? `<span class="dot" style="--c:${esc(o.color)}"></span>` : ''}
+          <span class="grow truncate">${esc(o.label)}</span>
+          ${!g.multiple && on ? icon('check', 'check ico--sm') : ''}
+        </button>`;
+      }).join('') : '<div class="popover__empty">Nenhuma opção. Edite o campo para adicionar.</div>'}
+      <div class="menu__sep"></div>
+      <button type="button" class="menu__item" data-clear>${icon('x')}<span class="grow">${g.multiple ? 'Limpar' : 'Sem status'}</span></button>`;
+    refreshIcons();
+  };
+
+  menu.addEventListener('click', (e) => {
+    const g = liveGroup();
+    if (!g) return;
+    if (e.target.closest('[data-clear]')) {
+      current = null;
+      onChange(null);
+      if (g.multiple) paint(); else closePopover(pop);
+      return;
+    }
+    const b = e.target.closest('[data-opt]');
+    if (!b) return;
+    const id = b.dataset.opt;
+    if (g.multiple) {
+      const ids = statusValueIds(current);
+      current = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
+      if (!current.length) current = null;
+      onChange(current);
+      paint();
+    } else {
+      current = id;
+      onChange(current);
+      closePopover(pop);
+    }
+  });
+
+  off = on('fields', paint);
+  paint();
+  return pop;
 }
 
 // ----------------------------------------------------------------------------

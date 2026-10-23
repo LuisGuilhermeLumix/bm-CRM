@@ -5,7 +5,7 @@ import { esc, el, randomPaletteColor, isTyping, relativeTime } from '../utils.js
 import { state, on, getBoard, getColumn, getField, getTag, sortedColumns, sortedFields, sortedTags } from '../state.js';
 import { updateBoard, deleteBoard } from '../boards.js';
 import { createColumn, updateColumn, deleteColumn, reorderColumns } from '../columns.js';
-import { fieldTypeInfo, deleteField, reorderFields, fieldUsage, updateField } from '../fields.js';
+import { fieldTypeInfo, deleteField, reorderFields, fieldUsage, updateField, fieldStatuses } from '../fields.js';
 import { createTag, updateTag, deleteTag, tagUsage } from '../tags.js';
 import { archiveCard, deleteCard, fieldCardUsage } from '../cards.js';
 import { chipHtml, emptyHtml, toggleHtml } from './common.js';
@@ -240,7 +240,7 @@ function renderFields(body) {
         const usage = fieldUsage(f.id);
         const inCards = fieldCardUsage(f.id);
         const nOpts = (f.options || []).length;
-        const nStatus = (f.status_options || []).length;
+        const groups = fieldStatuses(f);
         return `
         <div class="settings-row settings-row--col" data-id="${f.id}">
           <div class="settings-row__main">
@@ -256,7 +256,7 @@ function renderFields(body) {
             <span>${t.label}</span>
             ${f.show_on_card ? chipHtml('No card', '#6366f1') : ''}
             ${f.required ? chipHtml('Obrigatório', '#ef4444') : ''}
-            ${f.status_enabled ? chipHtml(`${f.status_label || 'Status'} · ${nStatus} ${nStatus === 1 ? 'opção' : 'opções'}`, '#06b6d4') : ''}
+            ${groups.map((g) => chipHtml(`${g.label || 'Status'} · ${(g.options || []).length}${g.multiple ? ' · várias' : ''}`, '#06b6d4')).join('')}
             ${(f.type === 'select' || f.type === 'multiselect') ? `<span>· ${nOpts} ${nOpts === 1 ? 'opção' : 'opções'}</span>` : ''}
             <span>· em ${inCards} ${inCards === 1 ? 'card' : 'cards'}</span>
             ${usage ? `<span>· com valor em ${usage}</span>` : ''}

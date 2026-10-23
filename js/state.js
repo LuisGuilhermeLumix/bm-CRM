@@ -78,7 +78,7 @@ function sameRow(a, b, keys) {
 
 const CARD_KEYS = ['title', 'description', 'column_id', 'position', 'values', 'archived', 'updated_at', 'tag_ids', 'field_ids'];
 const COLUMN_KEYS = ['name', 'color', 'position', 'wip_limit'];
-const FIELD_KEYS = ['name', 'type', 'options', 'position', 'show_on_card', 'required', 'icon', 'status_enabled', 'status_label', 'status_options', 'default_on_new_cards'];
+const FIELD_KEYS = ['name', 'type', 'options', 'position', 'show_on_card', 'required', 'icon', 'statuses', 'default_on_new_cards'];
 const TAG_KEYS = ['name', 'color'];
 const BOARD_KEYS = ['name', 'color', 'icon', 'position'];
 

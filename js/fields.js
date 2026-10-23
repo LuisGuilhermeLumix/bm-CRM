@@ -19,8 +19,21 @@ export const FIELD_TYPES = [
 
 export const fieldTypeInfo = (type) => FIELD_TYPES.find((t) => t.value === type) || FIELD_TYPES[0];
 
-/** Chave em cards.values onde fica o status vinculado ao campo. */
-export const statusKeyOf = (fieldId) => `${fieldId}:status`;
+/** Chave em cards.values onde fica o status de um grupo do campo. */
+export const statusKeyOf = (fieldId, groupId) => `${fieldId}:status:${groupId}`;
+/** Prefixo de todas as chaves de status de um campo (qualquer grupo). */
+export const statusPrefixOf = (fieldId) => `${fieldId}:status`;
+
+/** Grupos de status do campo ([] quando não tem). */
+export function fieldStatuses(field) {
+  return Array.isArray(field?.statuses) ? field.statuses : [];
+}
+
+/** Ids de opção selecionados numa chave de status (string → [id], array → ids). */
+export function statusValueIds(v) {
+  if (Array.isArray(v)) return v.filter(Boolean);
+  return v ? [v] : [];
+}
 
 export async function fetchFields(boardId) {
   return run(sb.from('fields').select('*').eq('board_id', boardId).order('position').order('created_at'));
@@ -57,12 +70,11 @@ export async function deleteField(id) {
   // de cards.field_ids, antes de apagar a definição (tudo no strip_field_values)
   await run(sb.rpc('strip_field_values', { p_field_id: id }));
   await run(sb.from('fields').delete().eq('id', id));
-  const skey = statusKeyOf(id);
+  const prefix = statusPrefixOf(id);
   state.cards.forEach((c) => {
     if (Array.isArray(c.field_ids)) c.field_ids = c.field_ids.filter((x) => x !== id);
     if (!c.values) return;
-    if (id in c.values) delete c.values[id];
-    if (skey in c.values) delete c.values[skey];
+    for (const k of Object.keys(c.values)) if (k === id || k.startsWith(prefix)) delete c.values[k];
   });
   removeField(id);
   emit('fields');
@@ -93,10 +105,16 @@ export function optionUsage(fieldId, optionId) {
   }).length;
 }
 
-/** Quantos cards usam uma opção de status do campo. */
-export function statusOptionUsage(fieldId, optionId) {
-  const skey = statusKeyOf(fieldId);
-  return state.cards.filter((c) => c.values?.[skey] === optionId).length;
+/** Quantos cards usam uma opção de um grupo de status do campo. */
+export function statusOptionUsage(fieldId, groupId, optionId) {
+  const skey = statusKeyOf(fieldId, groupId);
+  return state.cards.filter((c) => statusValueIds(c.values?.[skey]).includes(optionId)).length;
+}
+
+/** Quantos cards têm algum valor num grupo de status do campo. */
+export function statusGroupUsage(fieldId, groupId) {
+  const skey = statusKeyOf(fieldId, groupId);
+  return state.cards.filter((c) => statusValueIds(c.values?.[skey]).length > 0).length;
 }
 
 /** Tira uma opção dos valores de todos os cards (servidor + estado local). */
@@ -110,12 +128,15 @@ export async function purgeOptionValues(fieldId, optionId) {
   emit('cards');
 }
 
-/** Tira uma opção de status dos cards que a usam (servidor + estado local). */
-export async function purgeStatusOptionValues(fieldId, optionId) {
-  await run(sb.rpc('remove_field_status_option', { p_field_id: fieldId, p_option_id: optionId }));
-  const skey = statusKeyOf(fieldId);
+/** Tira uma opção de um grupo de status dos cards que a usam (servidor + estado local). */
+export async function purgeStatusOptionValues(fieldId, groupId, optionId) {
+  await run(sb.rpc('remove_field_status_option', { p_field_id: fieldId, p_group_id: groupId, p_option_id: optionId }));
+  const skey = statusKeyOf(fieldId, groupId);
   state.cards.forEach((c) => {
-    if (c.values?.[skey] === optionId) delete c.values[skey];
+    const v = c.values?.[skey];
+    if (v == null) return;
+    if (Array.isArray(v)) c.values[skey] = v.filter((x) => x !== optionId);
+    else if (v === optionId) delete c.values[skey];
   });
   emit('cards');
 }
