@@ -218,11 +218,16 @@ export function openPopover(anchor, html, opts = {}) {
   setTimeout(() => document.addEventListener('mousedown', onDown), 0);
   window.addEventListener('resize', position);
   document.addEventListener('scroll', position, true);
+  // Reposiciona quando o conteúdo cresce (ex.: adicionar opções no editor de
+  // campo) — senão o popover passa do fim da tela e o scroll interno não entra.
+  const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(position) : null;
+  ro?.observe(pop);
   pushClosable(onEsc);
   entry.cleanup = () => {
     document.removeEventListener('mousedown', onDown);
     window.removeEventListener('resize', position);
     document.removeEventListener('scroll', position, true);
+    ro?.disconnect();
     removeClosable(onEsc);
     anchor.setAttribute?.('aria-expanded', 'false');
     opts.onClose?.();

@@ -374,6 +374,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: po
   position: fixed; z-index: 700; min-width: 180px; max-width: 320px;
   background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius);
   box-shadow: var(--shadow-lg); padding: 6px; animation: pop-in 120ms ease;
+  max-height: calc(100vh - 16px); overflow-y: auto; overscroll-behavior: contain;
 }
 .popover--wide { min-width: 260px; }
 .menu { display: flex; flex-direction: column; gap: 1px; }
