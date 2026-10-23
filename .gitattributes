@@ -1,0 +1,4 @@
+# Scripts de shell precisam de LF mesmo no Windows (rodam dentro do container Linux)
+*.sh text eol=lf
+Dockerfile text eol=lf
+nginx.conf text eol=lf

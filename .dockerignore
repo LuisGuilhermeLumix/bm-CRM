@@ -1,0 +1,8 @@
+.git
+node_modules
+supabase
+README.md
+*.md
+.env
+.env.*
+js/config.js
