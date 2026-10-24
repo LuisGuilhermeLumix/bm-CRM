@@ -149,6 +149,7 @@ function emptyDraft() {
     name: '', type: 'text', icon: null, show_on_card: true, required: false, options: [],
     statuses: [],
     default_on_new_cards: true,
+    is_deadline: false,
   };
 }
 
@@ -160,6 +161,7 @@ function draftFrom(f) {
       id: g.id, label: g.label || '', multiple: !!g.multiple, options: (g.options || []).map((o) => ({ ...o })),
     })),
     default_on_new_cards: f.default_on_new_cards !== false,
+    is_deadline: !!f.is_deadline,
   };
 }
 
@@ -182,6 +184,7 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
     if (q('#feShow')) d.show_on_card = q('#feShow').checked;
     if (q('#feReq')) d.required = q('#feReq').checked;
     if (q('#feDefault')) d.default_on_new_cards = q('#feDefault').checked;
+    if (q('#feDeadline')) d.is_deadline = q('#feDeadline').checked;
     const oe = q('[data-oe="options"]'); if (oe) readOptionsEditor(oe, d.options);
     // grupos de status: rótulo, modo e opções de cada um, na ordem do DOM
     const rows = [...pop.querySelectorAll('[data-sg-id]')];
@@ -238,6 +241,11 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
           ${toggleHtml({ id: 'feReq', label: 'Obrigatório', checked: d.required })}
           ${toggleHtml({ id: 'feDefault', label: 'Padrão em novos cards', checked: d.default_on_new_cards })}
         </div>
+        ${d.type === 'date' ? `
+          <div class="field-editor__toggle">
+            ${toggleHtml({ id: 'feDeadline', label: 'É um prazo', checked: d.is_deadline })}
+            <span class="hint">Mostra "em N dias" ou "atrasado" em vermelho</span>
+          </div>` : ''}
         ${isSel ? `
           <div class="form-field">
             <label>Opções</label>
@@ -352,6 +360,7 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
         id: g.id, label: (g.label || '').trim() || 'Status', multiple: !!g.multiple, options: clean(g.options),
       })),
       default_on_new_cards: d.default_on_new_cards,
+      is_deadline: d.type === 'date' && d.is_deadline,
     };
     const btn = pop.querySelector('#feSave');
     btn.disabled = true;

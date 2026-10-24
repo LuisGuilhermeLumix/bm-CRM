@@ -458,7 +458,7 @@ function renderArchived(ctx) {
 // Campos
 // ----------------------------------------------------------------------------
 function fieldSig(f) {
-  return JSON.stringify([f.name, f.type, f.icon, f.required, f.show_on_card, f.options, f.statuses]);
+  return JSON.stringify([f.name, f.type, f.icon, f.required, f.show_on_card, f.is_deadline, f.options, f.statuses]);
 }
 
 function renderFieldRow(ctx, f) {

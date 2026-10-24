@@ -56,7 +56,8 @@ function summaryValue(field, value) {
     case 'currency': return { html: `<span>${esc(formatCurrency(value))}</span>` };
     case 'number': return { html: `<span>${esc(formatNumber(value))}</span>` };
     case 'date': {
-      const d = dateDistance(value);
+      // texto relativo e vermelho de atrasado só quando o campo é um prazo
+      const d = field.is_deadline ? dateDistance(value) : null;
       return { html: `<span>${esc(formatDateBR(value))}${d ? ` · ${esc(d.label)}` : ''}</span>`, cls: d?.overdue ? 'is-overdue' : '' };
     }
     case 'url': return { html: `<span>${esc(hostnameOf(value))}</span>` };
@@ -189,7 +190,7 @@ function dateControl(field, value, onChange) {
   const input = el(`<input class="input input--invisible" type="date" value="${esc(value ? String(value).slice(0, 10) : '')}" />`);
   const hint = el('<div class="date-hint"></div>');
   const paint = () => {
-    const d = dateDistance(input.value);
+    const d = field.is_deadline ? dateDistance(input.value) : null;
     hint.textContent = d ? d.label : '';
     hint.classList.toggle('is-overdue', !!d?.overdue);
   };

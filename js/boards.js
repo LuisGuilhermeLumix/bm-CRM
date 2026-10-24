@@ -24,7 +24,7 @@ export const DEFAULT_FIELDS = [
   { name: 'Empresa',         type: 'text',     show_on_card: true },
   { name: 'Nicho',           type: 'select',   show_on_card: true, options: [] },
   { name: 'Valor',           type: 'currency', show_on_card: true },
-  { name: 'Próximo contato', type: 'date',     show_on_card: true },
+  { name: 'Próximo contato', type: 'date',     show_on_card: true, is_deadline: true },
 ];
 
 export async function loadBoards() {
@@ -42,7 +42,7 @@ export async function createBoard({ name, color = '#6366f1', icon = 'kanban', wi
     await run(sb.from('columns').insert(DEFAULT_COLUMNS.map((c, i) => ({ ...c, board_id: board.id, position: i }))));
   }
   if (withDefaultFields) {
-    await run(sb.from('fields').insert(DEFAULT_FIELDS.map((f, i) => ({ ...f, board_id: board.id, position: i, options: f.options || [] }))));
+    await run(sb.from('fields').insert(DEFAULT_FIELDS.map((f, i) => ({ ...f, board_id: board.id, position: i, options: f.options || [], is_deadline: !!f.is_deadline }))));
   }
   upsertBoard(board);
   emit('boards');

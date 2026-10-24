@@ -697,6 +697,8 @@ kbd { font-family: inherit; font-size: var(--fs-xs); border: 1px solid var(--bor
 .field-editor__title { font-size: var(--fs-md); font-weight: var(--fw-semibold); display: flex; align-items: center; gap: 8px; }
 .field-editor__title .ico { color: var(--accent-text); }
 .field-editor__section { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid var(--border); }
+.field-editor__toggle { display: flex; flex-direction: column; gap: 4px; }
+.field-editor__toggle .hint { padding-left: 46px; } /* alinha com o texto do toggle (trilho 36px + gap 10px) */
 .field-editor__foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
 .icon-btn { display: inline-flex; align-items: center; gap: 8px; width: 100%; justify-content: flex-start; }
 .icon-btn > span { flex: 1; min-width: 0; text-align: left; font-weight: var(--fw-medium); }
