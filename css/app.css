@@ -802,3 +802,20 @@ html.theme-switching .board-item, html.theme-switching .chip {
 /* ---------- Editor de opções ---------- */
 .options-editor__list { display: flex; flex-direction: column; gap: 6px; }
 .options-editor__list:empty { display: none; }
+
+/* ---------- Variações de campo (forks: "Salvar" só neste card) ---------- */
+.field-editor__actions { flex-wrap: wrap; justify-content: flex-end; }
+.menu__group { display: flex; flex-direction: column; }
+.menu__row { display: flex; align-items: center; gap: 2px; }
+.menu__row > .menu__item { flex: 1; min-width: 0; }
+.menu__item-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; text-align: left; }
+.menu__item-sub { font-size: var(--fs-xs); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu__sub { display: flex; flex-direction: column; gap: 1px; margin: 0 0 4px 16px; padding-left: 6px; border-left: 1px solid var(--border); }
+.menu__item--sub { padding: 5px 10px; font-size: var(--fs-sm); }
+.settings-group { display: flex; flex-direction: column; gap: 6px; }
+.settings-group__variants { display: flex; flex-direction: column; gap: 6px; margin-left: 14px; padding-left: 10px; border-left: 2px solid var(--border); }
+.settings-row--nested { background: var(--surface); }
+.settings-row.is-orphan { opacity: 0.7; }
+.settings-row.is-orphan .settings-row__name { color: var(--text-2); font-weight: var(--fw-regular); }
+.info-box--row { align-items: center; flex-wrap: wrap; }
+.info-box--row .btn { flex-shrink: 0; }

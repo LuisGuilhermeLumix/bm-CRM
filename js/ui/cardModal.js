@@ -7,12 +7,12 @@ import { esc, el, debounce, autoResize, relativeTime, formatDateTimeBR, randomPa
 import { state, on, getCard, getColumn, getTag, profileOf, sortedColumns, sortedFields, sortedTags, sortedBoards, cardsInColumn } from '../state.js';
 import {
   updateCard, patchValues, moveCard, deleteCard, archiveCard, fetchActivity, addComment, logUpdated,
-  cardFields, addFieldToCard, removeFieldFromCard, reorderCardFields,
+  cardFields, addFieldToCard, removeFieldFromCard, reorderCardFields, fieldCardUsage,
   duplicateCard, moveCardToBoard, previewMoveCard,
 } from '../cards.js';
 import { fetchColumns } from '../columns.js';
 import { addTagToCard, removeTagFromCard, createTag } from '../tags.js';
-import { isEmptyValue, fieldStatuses, statusPrefixOf } from '../fields.js';
+import { isEmptyValue, fieldStatuses, statusPrefixOf, groupFieldsByName, fieldVariantSummary } from '../fields.js';
 import { renderFieldControl, renderStatusControl, statusKey } from './fieldInputs.js';
 import { openFieldEditor } from './fieldEditor.js';
 import { chipHtml, avatarHtml, emptyHtml } from './common.js';
@@ -471,7 +471,7 @@ function renderFieldRow(ctx, f) {
       <span>${esc(f.name)}</span>
       ${f.required ? '<span class="req">*</span>' : ''}
       <span class="field-row__actions">
-        <button type="button" class="field-row__action" data-edit-field title="Editar campo (vale para todos os cards que usam esse campo)">${icon('pencil')}</button>
+        <button type="button" class="field-row__action" data-edit-field title="Editar campo">${icon('pencil')}</button>
         <button type="button" class="field-row__action field-row__action--danger" data-remove-field title="Remover deste card">${icon('trash-2')}</button>
         <span class="field-row__action field-row__grip" title="Arrastar para reordenar">${icon('grip-vertical')}</span>
       </span>
@@ -496,7 +496,8 @@ function renderFieldRow(ctx, f) {
     wrap.appendChild(chips);
   }
   row.appendChild(wrap);
-  row.querySelector('[data-edit-field]').addEventListener('click', (e) => openFieldEditor(e.currentTarget, { fieldId: f.id }));
+  // com o card de contexto o editor oferece "Salvar" (só neste card) e "Salvar para todos"
+  row.querySelector('[data-edit-field]').addEventListener('click', (e) => openFieldEditor(e.currentTarget, { fieldId: f.id, cardId: ctx.cardId }));
   row.querySelector('[data-remove-field]').addEventListener('click', () => askRemoveField(ctx, f));
   return row;
 }
@@ -520,7 +521,13 @@ async function askRemoveField(ctx, f) {
   } catch (e) { toastError(e); }
 }
 
-/** Popover "+ Adicionar campo": campos do board que o card não tem, ou criar um novo. */
+/**
+ * Popover "+ Adicionar campo": campos do board que o card não tem, ou criar um
+ * novo. Com forks o catálogo tem várias definições de mesmo nome, então a lista
+ * é agrupada por nome + tipo: clicar na entrada adiciona a variação mais usada;
+ * "N variações" expande e permite escolher uma específica. Um grupo do qual o
+ * card já tem alguma variação não aparece (teria duas linhas com o mesmo nome).
+ */
 function openAddFieldPicker(anchor, ctx) {
   const pop = openPopover(anchor, `
     <input class="input input--sm popover__search" placeholder="Buscar campo…" autocomplete="off" />
@@ -530,18 +537,52 @@ function openAddFieldPicker(anchor, ctx) {
     { cls: 'popover--wide' });
   const search = pop.querySelector('input');
   const list = pop.querySelector('#afList');
+  const expanded = new Set(); // grupos com as variações abertas
 
   const paint = () => {
     const card = getCard(ctx.cardId);
     const q = search.value.trim().toLowerCase();
     const have = new Set(card?.field_ids || []);
-    const avail = sortedFields().filter((f) => !have.has(f.id) && (!q || f.name.toLowerCase().includes(q)));
-    list.innerHTML = avail.length
-      ? avail.map((f) => `<button type="button" class="menu__item" data-add="${f.id}">${icon(fieldIconName(f))}<span class="grow truncate">${esc(f.name)}</span></button>`).join('')
+    const groups = groupFieldsByName(sortedFields(), (f) => fieldCardUsage(f.id))
+      .filter((g) => !g.variants.some((f) => have.has(f.id)))
+      .filter((g) => !q || g.name.toLowerCase().includes(q));
+    list.innerHTML = groups.length
+      ? groups.map((g) => {
+        const multi = g.variants.length > 1;
+        const open = multi && expanded.has(g.key);
+        return `
+          <div class="menu__group">
+            <div class="menu__row">
+              <button type="button" class="menu__item" data-add="${g.main.id}">
+                ${icon(fieldIconName(g.main))}
+                <span class="grow menu__item-text">
+                  <span class="truncate">${esc(g.name)}</span>
+                  ${multi ? `<span class="menu__item-sub">${g.variants.length} variações</span>` : ''}
+                </span>
+              </button>
+              ${multi ? `<button type="button" class="btn btn--ghost btn--icon btn--sm" data-expand="${esc(g.key)}" aria-expanded="${open}" title="${open ? 'Ocultar' : 'Ver'} variações">${icon(open ? 'chevron-up' : 'chevron-down', 'ico--sm')}</button>` : ''}
+            </div>
+            ${open ? `<div class="menu__sub">${g.variants.map((f) => `
+              <button type="button" class="menu__item menu__item--sub" data-add="${f.id}">
+                ${icon(fieldIconName(f))}
+                <span class="grow menu__item-text">
+                  <span class="truncate">${esc(f.name)}</span>
+                  <span class="menu__item-sub">${esc(fieldVariantSummary(f, fieldCardUsage(f.id)))}</span>
+                </span>
+              </button>`).join('')}</div>` : ''}
+          </div>`;
+      }).join('')
       : `<div class="popover__empty">${q ? 'Nenhum campo com esse nome.' : 'Todos os campos do board já estão neste card.'}</div>`;
     refreshIcons();
   };
   list.addEventListener('click', async (e) => {
+    const ex = e.target.closest('[data-expand]');
+    if (ex) {
+      const k = ex.dataset.expand;
+      if (expanded.has(k)) expanded.delete(k); else expanded.add(k);
+      paint();
+      return;
+    }
     const b = e.target.closest('[data-add]');
     if (!b) return;
     closePopover(pop);
@@ -758,7 +799,9 @@ function activityText(a) {
     case 'moved':
       if (p.to_board || p.to_board_name) return `${who} moveu do board <b>${esc(p.from_board_name || '?')}</b> para <b>${esc(p.to_board_name || '?')}</b>`;
       return `${who} moveu de <b>${esc(p.from_name || getColumn(p.from)?.name || '?')}</b> para <b>${esc(p.to_name || getColumn(p.to)?.name || '?')}</b>`;
-    case 'updated': return `${who} atualizou ${(p.fields || []).map((f) => `<b>${esc(f)}</b>`).join(', ') || 'o card'}`;
+    case 'updated':
+      if (p.field_forked) return `${who} alterou o campo <b>${esc(p.field_forked.name || '?')}</b> só neste card`;
+      return `${who} atualizou ${(p.fields || []).map((f) => `<b>${esc(f)}</b>`).join(', ') || 'o card'}`;
     case 'comment': return `${who} comentou`;
     case 'archived': return `${who} arquivou o card`;
     case 'restored': return `${who} restaurou o card`;

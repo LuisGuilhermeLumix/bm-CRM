@@ -1,6 +1,6 @@
 // CRUD de campos personalizados (+ ícone próprio e status vinculado)
 import { sb, run } from './supabase.js';
-import { state, emit, upsertField, removeField, getField } from './state.js';
+import { state, emit, upsertField, removeField, getField, getCard } from './state.js';
 import { FIELD_TYPE_ICONS } from './ui/icons.js';
 
 export const FIELD_TYPES = [
@@ -65,6 +65,37 @@ export async function updateField(id, patch) {
   }
 }
 
+/**
+ * Fork: copia a definição do campo com `patch` aplicado para uma linha nova em
+ * `fields` e faz SÓ este card apontar para ela (RPC fork_field_for_card).
+ * Atualiza o estado local: campo novo no catálogo, field_ids e values do card
+ * remapeados. Os outros cards continuam na definição antiga.
+ */
+export async function forkFieldForCard(cardId, fieldId, patch) {
+  const row = await run(sb.rpc('fork_field_for_card', { p_card_id: cardId, p_field_id: fieldId, p_patch: patch || {} }));
+  upsertField(row);
+  const card = getCard(cardId);
+  if (card) {
+    card.field_ids = (card.field_ids || []).map((id) => (id === fieldId ? row.id : id));
+    card.values = remapValuesLocally(card.values, fieldId, row.id);
+  }
+  emit('fields');
+  emit('cards');
+  return row;
+}
+
+/** "<old>" → "<new>" e "<old>:status:<g>" → "<new>:status:<g>"; o resto fica igual. */
+export function remapValuesLocally(values, oldId, newId) {
+  const out = {};
+  const prefix = statusPrefixOf(oldId);
+  for (const [k, v] of Object.entries(values || {})) {
+    if (k === oldId) out[newId] = v;
+    else if (k.startsWith(prefix)) out[newId + k.slice(oldId.length)] = v;
+    else out[k] = v;
+  }
+  return out;
+}
+
 export async function deleteField(id) {
   // limpa os valores (e o status) desse campo em todos os cards, e tira o id
   // de cards.field_ids, antes de apagar a definição (tudo no strip_field_values)
@@ -95,6 +126,55 @@ export function isEmptyValue(v) {
 /** Quantos cards do board têm valor nesse campo (o status não conta). */
 export function fieldUsage(fieldId) {
   return state.cards.filter((c) => !isEmptyValue(c.values?.[fieldId])).length;
+}
+
+/** Este card tem valor nesse campo? (o status não conta) */
+export function cardHasValue(cardId, fieldId) {
+  return !isEmptyValue(getCard(cardId)?.values?.[fieldId]);
+}
+
+/** Este card usa essa opção de select/multiselect? */
+export function cardUsesOption(cardId, fieldId, optionId) {
+  const v = getCard(cardId)?.values?.[fieldId];
+  return Array.isArray(v) ? v.includes(optionId) : v === optionId;
+}
+
+/** Este card usa essa opção de um grupo de status? */
+export function cardUsesStatusOption(cardId, fieldId, groupId, optionId) {
+  return statusValueIds(getCard(cardId)?.values?.[statusKeyOf(fieldId, groupId)]).includes(optionId);
+}
+
+/**
+ * Agrupa definições por nome (sem diferenciar maiúsculas/espaços nas pontas)
+ * + tipo. Com forks o catálogo tem vários campos de mesmo nome; para o usuário
+ * a identidade do campo é o nome. Cada grupo: { key, name, type, variants,
+ * main } — `variants` na ordem recebida e `main` a variação mais usada
+ * (empate: a primeira). `usage(f)` = nº de cards que têm o campo.
+ */
+export function groupFieldsByName(fields, usage) {
+  const groups = new Map();
+  for (const f of fields) {
+    const key = `${(f.name || '').trim().toLowerCase()}\u0000${f.type}`;
+    if (!groups.has(key)) groups.set(key, { key, name: f.name, type: f.type, variants: [], main: f });
+    groups.get(key).variants.push(f);
+  }
+  for (const g of groups.values()) {
+    g.main = g.variants.reduce((best, f) => (usage(f) > usage(best) ? f : best), g.variants[0]);
+  }
+  return [...groups.values()];
+}
+
+/** Resumo curto de uma variação: "3 opções · 2 grupos de status · usado em 4 cards". */
+export function fieldVariantSummary(f, inCards) {
+  const parts = [];
+  if (f.type === 'select' || f.type === 'multiselect') {
+    const n = (f.options || []).length;
+    parts.push(`${n} ${n === 1 ? 'opção' : 'opções'}`);
+  }
+  const g = fieldStatuses(f).length;
+  if (g) parts.push(`${g} ${g === 1 ? 'grupo de status' : 'grupos de status'}`);
+  parts.push(inCards ? `usado em ${inCards} ${inCards === 1 ? 'card' : 'cards'}` : 'sem uso');
+  return parts.join(' · ');
 }
 
 /** Quantos cards usam uma opção de select/multiselect. */

@@ -5,7 +5,7 @@ import { esc, el, randomPaletteColor, isTyping, relativeTime } from '../utils.js
 import { state, on, getBoard, getColumn, getField, getTag, sortedColumns, sortedFields, sortedTags } from '../state.js';
 import { updateBoard, deleteBoard } from '../boards.js';
 import { createColumn, updateColumn, deleteColumn, reorderColumns } from '../columns.js';
-import { fieldTypeInfo, deleteField, reorderFields, fieldUsage, updateField, fieldStatuses } from '../fields.js';
+import { fieldTypeInfo, deleteField, reorderFields, fieldUsage, updateField, fieldStatuses, groupFieldsByName } from '../fields.js';
 import { createTag, updateTag, deleteTag, tagUsage } from '../tags.js';
 import { archiveCard, deleteCard, fieldCardUsage } from '../cards.js';
 import { chipHtml, emptyHtml, toggleHtml } from './common.js';
@@ -49,6 +49,7 @@ export function openBoardSettings(tab = 'columns') {
   ctx = {
     root, tab, stale: false, offs: [], timer: null,
     newColColor: randomPaletteColor(), newTagColor: randomPaletteColor(),
+    openGroups: new Set(), // aba Campos: grupos (nome + tipo) com as variações abertas
   };
   ctx.onEsc = () => closeBoardSettings();
   pushClosable(ctx.onEsc);
@@ -231,64 +232,115 @@ async function askDeleteColumn(colId) {
 
 // ============================================================================
 // CAMPOS — a edição em si acontece no popover compartilhado (fieldEditor.js)
+// Com forks ("Salvar" só num card) o catálogo tem várias definições de mesmo
+// nome: a lista agrupa por nome + tipo, expansível, com "usado em N cards" por
+// variação. Variação sem nenhum card (órfã) aparece em cinza com "Limpar".
 // ============================================================================
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+function fieldRowHtml(f, { nested = false } = {}) {
+  const t = fieldTypeInfo(f.type);
+  const usage = fieldUsage(f.id);
+  const inCards = fieldCardUsage(f.id);
+  const orphan = inCards === 0;
+  const nOpts = (f.options || []).length;
+  const groups = fieldStatuses(f);
+  return `
+    <div class="settings-row settings-row--col ${nested ? 'settings-row--nested' : 'settings-item'} ${orphan ? 'is-orphan' : ''}" data-id="${f.id}">
+      <div class="settings-row__main">
+        ${nested ? '' : `<span class="handle" title="Arrastar para reordenar">${icon('grip-vertical')}</span>`}
+        ${icon(fieldIconName(f))}
+        <span class="settings-row__name">${esc(f.name)}</span>
+        <span class="settings-row__icons">
+          ${orphan ? `<button type="button" class="btn btn--sm" data-clean="${f.id}" title="Excluir esta definição sem uso">${icon('eraser', 'ico--sm')} Limpar</button>` : ''}
+          <button type="button" class="btn btn--ghost btn--icon btn--sm" data-edit="${f.id}" title="Editar">${icon('pencil')}</button>
+          <button type="button" class="btn btn--ghost btn--icon btn--sm" data-del="${f.id}" title="Excluir do board">${icon('trash-2')}</button>
+        </span>
+      </div>
+      <div class="settings-row__sub">
+        <span>${t.label}</span>
+        ${f.show_on_card ? chipHtml('No card', '#6366f1') : ''}
+        ${f.required ? chipHtml('Obrigatório', '#ef4444') : ''}
+        ${groups.map((g) => chipHtml(`${g.label || 'Status'} · ${(g.options || []).length}${g.multiple ? ' · várias' : ''}`, '#06b6d4')).join('')}
+        ${(f.type === 'select' || f.type === 'multiselect') ? `<span>· ${plural(nOpts, 'opção', 'opções')}</span>` : ''}
+        <span>· ${orphan ? 'sem uso' : `${nested ? 'usado em' : 'em'} ${plural(inCards, 'card', 'cards')}`}</span>
+        ${usage ? `<span>· com valor em ${usage}</span>` : ''}
+      </div>
+      <div class="settings-row__sub">
+        ${toggleHtml({ id: `fdef-${f.id}`, label: 'Padrão em novos cards', checked: f.default_on_new_cards !== false })}
+      </div>
+    </div>`;
+}
+
+function fieldGroupHtml(g) {
+  const t = fieldTypeInfo(g.type);
+  const open = ctx.openGroups.has(g.key);
+  const total = g.variants.reduce((n, f) => n + fieldCardUsage(f.id), 0);
+  const orphans = g.variants.filter((f) => fieldCardUsage(f.id) === 0).length;
+  return `
+    <div class="settings-item settings-group ${open ? 'is-open' : ''}" data-group="${esc(g.key)}">
+      <div class="settings-row settings-row--col">
+        <div class="settings-row__main">
+          <span class="handle" title="Arrastar para reordenar">${icon('grip-vertical')}</span>
+          ${icon(fieldIconName(g.main))}
+          <span class="settings-row__name">${esc(g.name)}</span>
+          <span class="settings-row__icons">
+            <button type="button" class="btn btn--ghost btn--sm" data-toggle-group="${esc(g.key)}" aria-expanded="${open}">
+              ${plural(g.variants.length, 'variação', 'variações')} ${icon(open ? 'chevron-up' : 'chevron-down', 'ico--sm')}
+            </button>
+          </span>
+        </div>
+        <div class="settings-row__sub">
+          <span>${t.label}</span>
+          <span>· em ${plural(total, 'card', 'cards')}</span>
+          ${orphans ? `<span>· ${plural(orphans, 'variação sem uso', 'variações sem uso')}</span>` : ''}
+        </div>
+      </div>
+      ${open ? `<div class="settings-group__variants">${g.variants.map((f) => fieldRowHtml(f, { nested: true })).join('')}</div>` : ''}
+    </div>`;
+}
+
 function renderFields(body) {
   const fields = sortedFields();
+  const groups = groupFieldsByName(fields, (f) => fieldCardUsage(f.id));
+  const byKey = new Map(groups.map((g) => [g.key, g]));
+  const orphans = fields.filter((f) => fieldCardUsage(f.id) === 0);
   body.innerHTML = `
+    ${orphans.length ? `<div class="info-box info-box--row">${icon('eraser')}<span class="grow">${plural(orphans.length, 'definição de campo não está em nenhum card', 'definições de campo não estão em nenhum card')} (sobras de alterações só num card ou de remoções).</span>
+      <button type="button" class="btn btn--sm" id="cleanOrphans">Limpar campos sem uso (${orphans.length})</button></div>` : ''}
     ${fields.length ? `<div class="settings-list" id="setFields">
-      ${fields.map((f) => {
-        const t = fieldTypeInfo(f.type);
-        const usage = fieldUsage(f.id);
-        const inCards = fieldCardUsage(f.id);
-        const nOpts = (f.options || []).length;
-        const groups = fieldStatuses(f);
-        return `
-        <div class="settings-row settings-row--col" data-id="${f.id}">
-          <div class="settings-row__main">
-            <span class="handle" title="Arrastar para reordenar">${icon('grip-vertical')}</span>
-            ${icon(fieldIconName(f))}
-            <span class="settings-row__name">${esc(f.name)}</span>
-            <span class="settings-row__icons">
-              <button type="button" class="btn btn--ghost btn--icon btn--sm" data-edit="${f.id}" title="Editar">${icon('pencil')}</button>
-              <button type="button" class="btn btn--ghost btn--icon btn--sm" data-del="${f.id}" title="Excluir do board">${icon('trash-2')}</button>
-            </span>
-          </div>
-          <div class="settings-row__sub">
-            <span>${t.label}</span>
-            ${f.show_on_card ? chipHtml('No card', '#6366f1') : ''}
-            ${f.required ? chipHtml('Obrigatório', '#ef4444') : ''}
-            ${groups.map((g) => chipHtml(`${g.label || 'Status'} · ${(g.options || []).length}${g.multiple ? ' · várias' : ''}`, '#06b6d4')).join('')}
-            ${(f.type === 'select' || f.type === 'multiselect') ? `<span>· ${nOpts} ${nOpts === 1 ? 'opção' : 'opções'}</span>` : ''}
-            <span>· em ${inCards} ${inCards === 1 ? 'card' : 'cards'}</span>
-            ${usage ? `<span>· com valor em ${usage}</span>` : ''}
-          </div>
-          <div class="settings-row__sub">
-            ${toggleHtml({ id: `fdef-${f.id}`, label: 'Padrão em novos cards', checked: f.default_on_new_cards !== false })}
-          </div>
-        </div>`;
-      }).join('')}
+      ${groups.map((g) => (g.variants.length === 1 ? fieldRowHtml(g.main) : fieldGroupHtml(g))).join('')}
     </div>` : emptyHtml({
       icon: 'sliders-horizontal', title: 'Nenhum campo personalizado',
       text: 'Campos aparecem no modal de cada card. Ex.: Telefone, Empresa, Valor, Próximo contato.',
     })}
     <div><button type="button" class="btn" id="newFieldBtn">${icon('plus')} Novo campo</button></div>
-    <p class="hint">Cada card tem seus próprios campos: aqui fica o catálogo do board. "Padrão em novos cards" define quais entram automaticamente ao criar um card. A ordem aqui é a ordem padrão; cada card pode reordenar os seus. Excluir aqui remove o campo de todos os cards.</p>`;
+    <p class="hint">Cada card tem seus próprios campos: aqui fica o catálogo do board. "Padrão em novos cards" define quais entram automaticamente ao criar um card. A ordem aqui é a ordem padrão; cada card pode reordenar os seus. Um campo com "variações" foi alterado só em alguns cards ("Salvar" dentro do card); cada variação é uma definição própria. Excluir aqui remove a definição de todos os cards que a usam.</p>`;
 
   const list = body.querySelector('#setFields');
   if (list) {
     sortables.push(new Sortable(list, {
-      handle: '.handle', draggable: '.settings-row', animation: 150, ghostClass: 'sortable-ghost',
+      handle: '.handle', draggable: '.settings-item', animation: 150, ghostClass: 'sortable-ghost',
       onEnd: () => setTimeout(() => {
-        const ids = [...list.querySelectorAll('.settings-row[data-id]')].map((r) => r.dataset.id);
+        // ordem dos itens no DOM; um grupo vale pelas suas variações, na ordem do catálogo
+        const ids = [...list.querySelectorAll(':scope > .settings-item')].flatMap((r) => (
+          r.dataset.id ? [r.dataset.id] : (byKey.get(r.dataset.group)?.variants || []).map((f) => f.id)
+        ));
         if (ids.join() !== sortedFields().map((f) => f.id).join()) reorderFields(ids).catch((e) => { toastError(e); renderBody(); });
       }, 0),
     }));
   }
+  body.querySelectorAll('[data-toggle-group]').forEach((b) => b.addEventListener('click', () => {
+    const k = b.dataset.toggleGroup;
+    if (ctx.openGroups.has(k)) ctx.openGroups.delete(k); else ctx.openGroups.add(k);
+    renderBody();
+  }));
   body.querySelector('#newFieldBtn').addEventListener('click', (e) => openFieldEditor(e.currentTarget, { fieldId: null }));
   body.querySelectorAll('[id^="fdef-"]').forEach((inp) => inp.addEventListener('change', () => {
     const id = inp.id.slice(5);
     updateField(id, { default_on_new_cards: inp.checked }).catch((e) => { toastError(e); inp.checked = !inp.checked; });
   }));
+  // sem card de contexto: o editor mostra só "Salvar", que vale para todos os cards que usam a definição
   body.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => openFieldEditor(b, { fieldId: b.dataset.edit })));
   body.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
     const f = getField(b.dataset.del);
@@ -297,12 +349,37 @@ function renderFields(body) {
     const inCards = fieldCardUsage(f.id);
     const ok = await confirmDialog({
       title: 'Excluir campo do board',
-      message: `Excluir o campo "<b>${esc(f.name)}</b>" do board?${inCards ? ` Ele está em uso em <b>${inCards} ${inCards === 1 ? 'card' : 'cards'}</b>` : ' Nenhum card usa esse campo'}${usage ? ` e tem valor preenchido em ${usage} ${usage === 1 ? 'card' : 'cards'}, que será apagado.` : '.'}`,
+      message: `Excluir o campo "<b>${esc(f.name)}</b>" do board?${inCards ? ` Ele está em uso em <b>${plural(inCards, 'card', 'cards')}</b>` : ' Nenhum card usa esse campo'}${usage ? ` e tem valor preenchido em ${plural(usage, 'card', 'cards')}, que será apagado.` : '.'}`,
       confirmText: 'Excluir do board',
     });
     if (!ok) return;
     try { await deleteField(f.id); toastSuccess('Campo excluído.'); } catch (e) { toastError(e); }
   }));
+  body.querySelectorAll('[data-clean]').forEach((b) => b.addEventListener('click', async () => {
+    const f = getField(b.dataset.clean);
+    if (!f) return;
+    const ok = await confirmDialog({
+      title: 'Limpar campo sem uso',
+      message: `Excluir a definição "<b>${esc(f.name)}</b>" (${fieldTypeInfo(f.type).label})? Nenhum card usa essa variação.`,
+      confirmText: 'Limpar',
+    });
+    if (!ok) return;
+    try { await deleteField(f.id); toastSuccess('Campo sem uso excluído.'); } catch (e) { toastError(e); }
+  }));
+  body.querySelector('#cleanOrphans')?.addEventListener('click', async () => {
+    const list2 = sortedFields().filter((f) => fieldCardUsage(f.id) === 0);
+    if (!list2.length) return;
+    const ok = await confirmDialog({
+      title: 'Limpar campos sem uso',
+      message: `Excluir ${plural(list2.length, 'definição de campo que não está em nenhum card', 'definições de campo que não estão em nenhum card')}: ${list2.map((f) => `<b>${esc(f.name)}</b>`).join(', ')}?`,
+      confirmText: `Limpar ${list2.length}`,
+    });
+    if (!ok) return;
+    try {
+      for (const f of list2) await deleteField(f.id);
+      toastSuccess(`${plural(list2.length, 'campo sem uso excluído', 'campos sem uso excluídos')}.`);
+    } catch (e) { toastError(e); }
+  });
 }
 
 // ============================================================================

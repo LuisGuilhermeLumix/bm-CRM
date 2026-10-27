@@ -4,13 +4,15 @@
 import Sortable from 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/modular/sortable.esm.js';
 import { icon, refreshIcons, fieldIconName } from './icons.js';
 import { esc, el, uid, nextPaletteColor } from '../utils.js';
-import { state, getField } from '../state.js';
+import { state, getField, getCard, stable } from '../state.js';
 import {
-  FIELD_TYPES, createField, updateField, deleteField, fieldUsage, optionUsage, statusOptionUsage, statusGroupUsage,
+  FIELD_TYPES, createField, updateField, deleteField, forkFieldForCard,
+  fieldUsage, optionUsage, statusOptionUsage, statusGroupUsage,
+  cardHasValue, cardUsesOption, cardUsesStatusOption, statusKeyOf, statusValueIds,
   purgeOptionValues, purgeStatusOptionValues, fieldStatuses,
 } from '../fields.js';
 import { toggleHtml } from './common.js';
-import { fieldCardUsage } from '../cards.js';
+import { fieldCardUsage, patchValues } from '../cards.js';
 import { openPopover, closePopover, confirmDialog } from './dialog.js';
 import { openColorPopover } from './colorPicker.js';
 import { openIconPicker } from './iconPicker.js';
@@ -165,14 +167,32 @@ function draftFrom(f) {
   };
 }
 
+/** Chaves da definição que podem divergir entre um fork e o original (= o que o RPC aceita em p_patch). */
+const FORK_KEYS = ['name', 'icon', 'type', 'options', 'statuses', 'show_on_card', 'required', 'is_deadline'];
+
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
 /**
- * openFieldEditor(anchor, { fieldId, onSaved, onDeleted, nested })
- * fieldId null = novo campo. Retorna o elemento do popover.
+ * openFieldEditor(anchor, { fieldId, cardId, onSaved, onDeleted, nested })
+ * fieldId null = novo campo. cardId = card de contexto (lápis / picker no
+ * modal do card); sem cardId o editor veio do painel Configurar board.
+ *
+ * Com cardId e o campo em uso em mais de um card, o rodapé tem duas saídas:
+ *   Salvar (primário)      → fork: nova definição só para este card
+ *   Salvar para todos (N)  → update in place (comportamento antigo)
+ * Nos outros casos só "Salvar", que é in place.
+ * onSaved(field, { forked, fromId }) recebe o campo salvo (no fork, o novo).
+ * Retorna o elemento do popover.
  */
-export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, nested = false } = {}) {
+export function openFieldEditor(anchor, { fieldId = null, cardId = null, onSaved, onDeleted, nested = false } = {}) {
   const field = fieldId ? getField(fieldId) : null;
   if (fieldId && !field) return null;
+  const original = field ? draftFrom(field) : null; // base do diff que vira p_patch
   const d = field ? draftFrom(field) : emptyDraft();
+  const inCards = fieldId ? fieldCardUsage(fieldId) : 0;
+  const hasCard = !!(fieldId && cardId && getCard(cardId)?.field_ids?.includes(fieldId));
+  // fork só faz sentido quando outro card também usa a definição
+  const canFork = hasCard && inCards > 1;
   let sortables = [];
 
   const pop = openPopover(anchor, '', { cls: 'popover--editor', nested });
@@ -201,20 +221,35 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
     }
   };
 
+  const headHint = () => {
+    if (!fieldId) return 'O campo fica disponível para todos os cards deste board';
+    if (canFork) return `Em uso em ${plural(inCards, 'card', 'cards')} — escolha abaixo se a alteração vale só aqui ou para todos`;
+    if (hasCard) return 'Só este card usa este campo';
+    if (!inCards) return 'Nenhum card usa este campo ainda';
+    return `Vale para ${inCards === 1 ? 'o 1 card que usa' : `os ${inCards} cards que usam`} este campo`;
+  };
+
   const paint = ({ focus = null } = {}) => {
     sortables.forEach((s) => { try { s.destroy(); } catch { /* ignore */ } });
     sortables = [];
-    const usage = fieldId ? fieldUsage(fieldId) : 0;
-    const inCards = fieldId ? fieldCardUsage(fieldId) : 0;
-    const locked = usage > 0;
+    const usageAll = fieldId ? fieldUsage(fieldId) : 0;
+    const usageHere = hasCard && cardHasValue(cardId, fieldId) ? 1 : 0;
+    // trava do tipo: no fork só os valores DESTE card importam (o fork leva só
+    // eles); no "para todos", os de todos os cards
+    const locked = canFork ? usageHere > 0 : usageAll > 0;
     const isSel = d.type === 'select' || d.type === 'multiselect';
     const iconName = d.icon || fieldIconName({ type: d.type });
+
+    let typeNote = '';
+    if (locked && canFork) typeNote = `<div class="info-box info-box--warn">${icon('info')}<span>Este campo já tem valor neste card, por isso o tipo não pode ser alterado. Se precisar de outro tipo, crie um campo novo.</span></div>`;
+    else if (locked) typeNote = `<div class="info-box info-box--warn">${icon('info')}<span>Este campo já tem valor em ${plural(usageAll, 'card', 'cards')}, por isso o tipo não pode ser alterado. Se precisar de outro tipo, crie um campo novo.</span></div>`;
+    else if (canFork && usageAll > 0) typeNote = `<div class="info-box">${icon('info')}<span>Outros cards já têm valor neste campo: mudar o tipo só funciona com "Salvar" (só neste card).</span></div>`;
 
     pop.innerHTML = `
       <div class="field-editor">
         <div class="field-editor__head">
           <div class="field-editor__title">${icon(fieldId ? 'pencil' : 'plus')} ${fieldId ? 'Editar campo' : 'Novo campo'}</div>
-          <div class="hint">${fieldId ? `Alterações valem para todos os cards que usam esse campo${inCards ? ` (${inCards} ${inCards === 1 ? 'card' : 'cards'})` : ''}` : 'O campo fica disponível para todos os cards deste board'}</div>
+          <div class="hint">${headHint()}</div>
         </div>
 
         <div class="form-field">
@@ -235,7 +270,7 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
             </select>
           </div>
         </div>
-        ${locked ? `<div class="info-box info-box--warn">${icon('info')}<span>Este campo já tem valor em ${usage} ${usage === 1 ? 'card' : 'cards'}, por isso o tipo não pode ser alterado. Se precisar de outro tipo, crie um campo novo.</span></div>` : ''}
+        ${typeNote}
         <div class="row" style="gap:20px;flex-wrap:wrap">
           ${toggleHtml({ id: 'feShow', label: 'Mostrar no card do kanban', checked: d.show_on_card })}
           ${toggleHtml({ id: 'feReq', label: 'Obrigatório', checked: d.required })}
@@ -271,9 +306,10 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
 
         <div class="field-editor__foot">
           ${fieldId ? `<button type="button" class="btn btn--danger-ghost btn--sm" id="feDelete">${icon('trash-2')} Excluir campo</button>` : '<span></span>'}
-          <span class="row">
+          <span class="row field-editor__actions">
             <button type="button" class="btn btn--ghost btn--sm" id="feCancel">Cancelar</button>
-            <button type="button" class="btn btn--primary btn--sm" id="feSave">${fieldId ? 'Salvar' : 'Criar campo'}</button>
+            ${canFork ? `<button type="button" class="btn btn--sm" id="feSaveAll" title="Altera a definição compartilhada: vale para todos os cards que usam este campo">Salvar para todos (${inCards})</button>` : ''}
+            <button type="button" class="btn btn--primary btn--sm" id="feSave" ${canFork ? 'title="Altera só neste card; os outros continuam como estão"' : ''}>${fieldId ? 'Salvar' : 'Criar campo'}</button>
           </span>
         </div>
       </div>`;
@@ -294,6 +330,7 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
 
   const bind = () => {
     const q = (s) => pop.querySelector(s);
+    // Enter aciona o primário ("Salvar")
     q('#feName').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); q('#feSave').click(); } });
     q('#feIcon').addEventListener('click', (e) => {
       openIconPicker(e.currentTarget, d.icon, (name) => { read(); d.icon = name; paint(); }, { nested: true, allowDefault: true });
@@ -319,11 +356,16 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
       });
       row?.querySelector('[data-sg-rm]').addEventListener('click', async () => {
         read();
-        const n = fieldId ? statusGroupUsage(fieldId, g.id) : 0;
+        // no fork só este card perde o status; no "para todos", todos os cards
+        const n = !fieldId ? 0
+          : canFork ? (statusValueIds(getCard(cardId)?.values?.[statusKeyOf(fieldId, g.id)]).length ? 1 : 0)
+            : statusGroupUsage(fieldId, g.id);
         if (n) {
           const ok = await confirmDialog({
             title: 'Remover grupo de status?',
-            message: `"<b>${esc(g.label || 'Status')}</b>" tem valor em ${n} ${n === 1 ? 'card' : 'cards'}. Ao salvar, esse status será apagado desses cards.`,
+            message: canFork
+              ? `"<b>${esc(g.label || 'Status')}</b>" tem valor neste card. Ao salvar, esse status será apagado daqui (e dos outros cards, se escolher "Salvar para todos").`
+              : `"<b>${esc(g.label || 'Status')}</b>" tem valor em ${plural(n, 'card', 'cards')}. Ao salvar, esse status será apagado desses cards.`,
             confirmText: 'Remover',
           });
           if (!ok) return;
@@ -339,17 +381,19 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
       paint({ focus: `group:${g.id}` });
     });
     q('#feCancel').addEventListener('click', () => closePopover(pop));
-    q('#feSave').addEventListener('click', save);
+    q('#feSave').addEventListener('click', () => (canFork ? saveFork() : saveAll()));
+    q('#feSaveAll')?.addEventListener('click', saveAll);
     q('#feDelete')?.addEventListener('click', remove);
   };
 
-  const save = async () => {
+  /** Lê o formulário e monta a definição completa (ou null se faltar o nome). */
+  const buildPayload = () => {
     read();
     const name = d.name.trim();
-    if (!name) { pop.querySelector('#feName').focus(); toast('Dê um nome ao campo.', { type: 'warning' }); return; }
+    if (!name) { pop.querySelector('#feName').focus(); toast('Dê um nome ao campo.', { type: 'warning' }); return null; }
     const isSel = d.type === 'select' || d.type === 'multiselect';
     const clean = (list) => list.map((o) => ({ ...o, label: o.label.trim() })).filter((o) => o.label);
-    const payload = {
+    return {
       name,
       type: d.type,
       icon: d.icon || null,
@@ -362,8 +406,16 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
       default_on_new_cards: d.default_on_new_cards,
       is_deadline: d.type === 'date' && d.is_deadline,
     };
-    const btn = pop.querySelector('#feSave');
-    btn.disabled = true;
+  };
+
+  const setBusy = (busy) => pop.querySelectorAll('#feSave, #feSaveAll').forEach((b) => { b.disabled = busy; });
+
+  /** Fluxo in place: cria o campo, ou atualiza a definição compartilhada (vale para todos). */
+  const saveAll = async () => {
+    const payload = buildPayload();
+    if (!payload) return;
+    const isSel = payload.type === 'select' || payload.type === 'multiselect';
+    setBusy(true);
     try {
       let saved;
       if (!fieldId) {
@@ -371,7 +423,13 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
         toastSuccess('Campo criado.');
       } else {
         const f = getField(fieldId);
-        if (fieldUsage(fieldId) > 0) payload.type = f.type; // tipo travado
+        const usageAll = fieldUsage(fieldId);
+        if (usageAll > 0 && payload.type !== f.type) {
+          // no modo fork o select de tipo pode estar liberado (este card não tem valor)
+          toast(`Não dá para mudar o tipo para todos: ${plural(usageAll, 'card já tem', 'cards já têm')} valor. Use "Salvar" para mudar só neste card.`, { type: 'warning' });
+          setBusy(false);
+          return;
+        }
 
         // opções (select) removidas que estão em uso
         const removedOpts = (f.options || []).filter((o) => !payload.options.some((x) => x.id === o.id));
@@ -397,27 +455,109 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
 
         if (optsInUse.length || statusInUse.length) {
           const lines = [
-            ...optsInUse.map((x) => `"<b>${esc(x.o.label)}</b>" é usada em ${x.n} ${x.n === 1 ? 'card' : 'cards'}`),
-            ...statusInUse.map((x) => `${esc(x.g.label || 'Status')} "<b>${esc(x.o.label)}</b>" é usado em ${x.n} ${x.n === 1 ? 'card' : 'cards'}`),
+            ...optsInUse.map((x) => `"<b>${esc(x.o.label)}</b>" é usada em ${plural(x.n, 'card', 'cards')}`),
+            ...statusInUse.map((x) => `${esc(x.g.label || 'Status')} "<b>${esc(x.o.label)}</b>" é usado em ${plural(x.n, 'card', 'cards')}`),
           ];
           const ok = await confirmDialog({
             title: 'Remover opções em uso?',
             message: lines.join('. ') + '. O valor será removido desses cards.',
             confirmText: 'Remover e salvar',
           });
-          if (!ok) { btn.disabled = false; return; }
+          if (!ok) { setBusy(false); return; }
         }
         for (const x of optsInUse) await purgeOptionValues(fieldId, x.o.id);
         for (const x of statusInUse) await purgeStatusOptionValues(fieldId, x.g.id, x.o.id);
         for (const x of groupPurges) await purgeStatusOptionValues(fieldId, x.g.id, x.o.id);
         saved = await updateField(fieldId, payload);
-        toastSuccess('Campo salvo.');
+        toastSuccess(inCards > 1 ? `Campo alterado em ${inCards} cards.` : 'Campo salvo.');
       }
       closePopover(pop);
-      onSaved?.(saved);
+      onSaved?.(saved, { forked: false });
     } catch (e) {
       toastError(e);
-      if (pop.isConnected) btn.disabled = false;
+      if (pop.isConnected) setBusy(false);
+    }
+  };
+
+  /**
+   * Fluxo fork: só o que mudou em relação ao original vira p_patch; o RPC cria
+   * a definição nova e troca o id só neste card. "Padrão em novos cards" não é
+   * por card (o fork nunca é padrão), então essa flag, se mudou, é gravada na
+   * definição compartilhada.
+   */
+  const saveFork = async () => {
+    const payload = buildPayload();
+    if (!payload) return;
+    if (cardHasValue(cardId, fieldId)) payload.type = original.type; // tipo travado por valor neste card
+    const patch = {};
+    for (const k of FORK_KEYS) if (stable(payload[k]) !== stable(original[k])) patch[k] = payload[k];
+    const defaultChanged = payload.default_on_new_cards !== original.default_on_new_cards;
+    setBusy(true);
+    try {
+      if (!Object.keys(patch).length) {
+        let saved = getField(fieldId);
+        if (defaultChanged) {
+          saved = await updateField(fieldId, { default_on_new_cards: payload.default_on_new_cards });
+          toastSuccess('Campo salvo.');
+        }
+        closePopover(pop);
+        onSaved?.(saved, { forked: false });
+        return;
+      }
+
+      // opções removidas que ESTE card usa (o fork leva só os valores deste card)
+      const isSel = payload.type === 'select' || payload.type === 'multiselect';
+      const removedOpts = isSel
+        ? original.options.filter((o) => !payload.options.some((x) => x.id === o.id) && cardUsesOption(cardId, fieldId, o.id))
+        : [];
+      const removedStatus = []; // { g, o, groupRemoved }
+      for (const g of original.statuses) {
+        const kept = payload.statuses.find((x) => x.id === g.id);
+        for (const o of g.options) {
+          if (kept && kept.options.some((x) => x.id === o.id)) continue;
+          if (cardUsesStatusOption(cardId, fieldId, g.id, o.id)) removedStatus.push({ g, o, groupRemoved: !kept });
+        }
+      }
+      const toConfirm = [
+        ...removedOpts.map((o) => `"<b>${esc(o.label)}</b>"`),
+        ...removedStatus.filter((x) => !x.groupRemoved).map((x) => `${esc(x.g.label || 'Status')} "<b>${esc(x.o.label)}</b>"`),
+      ];
+      if (toConfirm.length) {
+        const ok = await confirmDialog({
+          title: 'Remover opções em uso?',
+          message: `${toConfirm.join(', ')} ${toConfirm.length === 1 ? 'está' : 'estão'} em uso neste card. O valor será removido daqui.`,
+          confirmText: 'Remover e salvar',
+        });
+        if (!ok) { setBusy(false); return; }
+      }
+
+      const saved = await forkFieldForCard(cardId, fieldId, patch);
+      if (defaultChanged) await updateField(fieldId, { default_on_new_cards: payload.default_on_new_cards }).catch(() => {});
+
+      // limpa, nos valores deste card (já com o id novo), as opções que saíram
+      const card = getCard(cardId);
+      const vpatch = {};
+      if (removedOpts.length && card) {
+        const gone = new Set(removedOpts.map((o) => o.id));
+        const v = card.values[saved.id];
+        const nv = Array.isArray(v) ? v.filter((x) => !gone.has(x)) : null;
+        vpatch[saved.id] = nv && nv.length ? nv : null;
+      }
+      for (const x of removedStatus) {
+        const key = statusKeyOf(saved.id, x.g.id);
+        if (x.groupRemoved) { vpatch[key] = null; continue; }
+        const v = key in vpatch ? vpatch[key] : card?.values[key];
+        if (Array.isArray(v)) { const nv = v.filter((id) => id !== x.o.id); vpatch[key] = nv.length ? nv : null; }
+        else if (v === x.o.id) vpatch[key] = null;
+      }
+      if (Object.keys(vpatch).length) await patchValues(cardId, vpatch);
+
+      toastSuccess('Campo alterado só neste card.');
+      closePopover(pop);
+      onSaved?.(saved, { forked: true, fromId: fieldId });
+    } catch (e) {
+      toastError(e);
+      if (pop.isConnected) setBusy(false);
     }
   };
 
@@ -425,10 +565,10 @@ export function openFieldEditor(anchor, { fieldId = null, onSaved, onDeleted, ne
     const f = getField(fieldId);
     if (!f) return;
     const usage = fieldUsage(fieldId);
-    const inCards = fieldCardUsage(fieldId);
+    const n = fieldCardUsage(fieldId);
     const ok = await confirmDialog({
       title: 'Excluir campo do board',
-      message: `Excluir o campo "<b>${esc(f.name)}</b>" do board?${inCards ? ` Ele está em uso em <b>${inCards} ${inCards === 1 ? 'card' : 'cards'}</b>` : ' Nenhum card usa esse campo'}${usage ? ` e tem valor preenchido em ${usage} ${usage === 1 ? 'card' : 'cards'}, que será apagado.` : '.'} Para tirar o campo de um card só, use a lixeira na linha do campo dentro do card.`,
+      message: `Excluir o campo "<b>${esc(f.name)}</b>" do board?${n ? ` Ele está em uso em <b>${plural(n, 'card', 'cards')}</b>` : ' Nenhum card usa esse campo'}${usage ? ` e tem valor preenchido em ${plural(usage, 'card', 'cards')}, que será apagado.` : '.'} Para tirar o campo de um card só, use a lixeira na linha do campo dentro do card.`,
       confirmText: 'Excluir do board',
     });
     if (!ok) return;

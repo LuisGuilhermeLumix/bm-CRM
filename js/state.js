@@ -68,7 +68,8 @@ export function sortedTags() { return [...state.tags].sort((a, b) => a.name.loca
 
 // Serialização com chaves ordenadas: o jsonb do Postgres reordena as chaves de
 // `values`, então um stringify simples acusaria mudança onde não há.
-function stable(v) {
+// (exportada: o editor de campo usa para o diff que vira p_patch no fork)
+export function stable(v) {
   if (Array.isArray(v)) return '[' + v.map(stable).join(',') + ']';
   if (v && typeof v === 'object') return '{' + Object.keys(v).sort().map((k) => JSON.stringify(k) + ':' + stable(v[k])).join(',') + '}';
   return JSON.stringify(v);
