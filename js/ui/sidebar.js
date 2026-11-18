@@ -1,9 +1,11 @@
-// Sidebar: lista de boards, novo board, usuário e tema
+// Sidebar em dois níveis: seções do app no topo e, na seção Boards, a lista de
+// boards (novo board, reordenar, menu). Rodapé com usuário e tema.
 import Sortable from 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/modular/sortable.esm.js';
 import { icon, refreshIcons } from './icons.js';
 import { esc, storage, isMobile } from '../utils.js';
 import { state, on, sortedBoards } from '../state.js';
 import { openBoard, reorderBoards } from '../boards.js';
+import { SECTIONS, routeHash } from '../router.js';
 import { signOut } from '../auth.js';
 import { currentTheme, toggleTheme } from './theme.js';
 import { openMenu, pushClosable, removeClosable } from './dialog.js';
@@ -20,7 +22,7 @@ const shell = () => document.getElementById('shell');
 
 export function initSidebar() {
   if (storage.get(COLLAPSE_KEY)) shell()?.classList.add('sidebar-collapsed');
-  ['boards', 'board', 'profiles', 'theme'].forEach((ev) => on(ev, render));
+  ['boards', 'board', 'profiles', 'theme', 'route'].forEach((ev) => on(ev, render));
   document.getElementById('sidebarBackdrop')?.addEventListener('click', closeSidebar);
   render();
 }
@@ -53,6 +55,10 @@ function render() {
   const host = document.getElementById('sidebar');
   if (!host) return;
   const boards = sortedBoards();
+  const section = state.route.section;
+  const inBoards = section === 'boards';
+  // Fora de Boards o link vai para "#/boards" e o app reabre o último board
+  const sectionHref = (s) => routeHash({ section: s.id, boardId: s.id === 'boards' ? state.boardId : null });
   const p = state.profile;
   const theme = currentTheme();
   sortable?.destroy();
@@ -66,23 +72,35 @@ function render() {
       </div>
       <button class="btn btn--ghost btn--icon btn--sm btn-collapse-sidebar" id="btnCollapse" title="Recolher / expandir">${icon('panel-left')}</button>
     </div>
-    <div class="sidebar__section">
-      <span>Boards</span>
-      <button class="btn btn--ghost btn--icon btn--sm btn-new-board" title="Novo board">${icon('plus')}</button>
-    </div>
-    <nav class="sidebar__boards" id="boardsList">
-      ${boards.map((b) => `
-        <div class="board-item ${b.id === state.boardId ? 'is-active' : ''}" data-board-id="${b.id}" style="--c:${esc(b.color)}">
-          <button type="button" class="board-item__main" title="${esc(b.name)}">
-            <span class="board-item__icon">${icon(b.icon || 'kanban')}</span>
-            <span class="board-item__name">${esc(b.name)}</span>
-          </button>
-          <button type="button" class="board-item__more" data-board-menu title="Mais ações" aria-label="Mais ações do board ${esc(b.name)}">${icon('ellipsis')}</button>
-        </div>`).join('')}
-      ${!boards.length ? emptyHtml({ icon: 'layout-grid', text: 'Nenhum board ainda.', small: true }) : ''}
-    </nav>
-    <div style="padding: 6px 10px 10px">
-      <button class="btn btn--block btn-new-board">${icon('plus')}<span>Novo board</span></button>
+    <div class="sidebar__body">
+      <nav class="sidebar__nav" aria-label="Seções">
+        ${SECTIONS.map((s) => `
+          <a class="nav-item ${s.id === section ? 'is-active' : ''}" href="${sectionHref(s)}" title="${esc(s.label)}" ${s.id === section ? 'aria-current="page"' : ''}>
+            <span class="nav-item__icon">${icon(s.icon)}</span>
+            <span class="nav-item__label">${esc(s.label)}</span>
+          </a>`).join('')}
+      </nav>
+      ${inBoards ? `
+      <div class="sidebar__boards-wrap">
+        <div class="sidebar__section">
+          <span>Boards</span>
+          <button class="btn btn--ghost btn--icon btn--sm btn-new-board" title="Novo board">${icon('plus')}</button>
+        </div>
+        <nav class="sidebar__boards" id="boardsList" aria-label="Boards">
+          ${boards.map((b) => `
+            <div class="board-item ${b.id === state.boardId ? 'is-active' : ''}" data-board-id="${b.id}" style="--c:${esc(b.color)}">
+              <button type="button" class="board-item__main" title="${esc(b.name)}">
+                <span class="board-item__icon">${icon(b.icon || 'kanban')}</span>
+                <span class="board-item__name">${esc(b.name)}</span>
+              </button>
+              <button type="button" class="board-item__more" data-board-menu title="Mais ações" aria-label="Mais ações do board ${esc(b.name)}">${icon('ellipsis')}</button>
+            </div>`).join('')}
+          ${!boards.length ? emptyHtml({ icon: 'layout-grid', text: 'Nenhum board ainda.', small: true }) : ''}
+        </nav>
+        <div class="sidebar__new-board">
+          <button class="btn btn--block btn-new-board">${icon('plus')}<span>Novo board</span></button>
+        </div>
+      </div>` : ''}
     </div>
     <div class="sidebar__footer">
       <button class="user-chip" id="userMenu" title="${esc(p?.name || '')}">
@@ -95,6 +113,8 @@ function render() {
   refreshIcons();
 
   host.querySelector('#btnCollapse').addEventListener('click', toggleSidebar);
+  // A navegação é do próprio link (hashchange); aqui só fecha o drawer do celular
+  host.querySelectorAll('.nav-item').forEach((a) => a.addEventListener('click', closeSidebar));
   host.querySelectorAll('.board-item__main').forEach((b) => b.addEventListener('click', async () => {
     const id = b.closest('[data-board-id]').dataset.boardId;
     closeSidebar();
@@ -136,7 +156,7 @@ function render() {
   });
 
   const list = host.querySelector('#boardsList');
-  if (boards.length > 1) {
+  if (list && boards.length > 1) {
     sortable = new Sortable(list, {
       draggable: '.board-item', animation: 150, delay: 150, delayOnTouchOnly: true, ghostClass: 'sortable-ghost',
       onEnd: () => setTimeout(() => {

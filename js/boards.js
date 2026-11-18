@@ -7,7 +7,10 @@ import { fetchFields } from './fields.js';
 import { fetchTags } from './tags.js';
 import { fetchCards } from './cards.js';
 import { subscribeBoard, unsubscribeBoard } from './realtime.js';
+import { syncBoardRoute } from './router.js';
 
+// Board a reabrir ao entrar na seção Boards sem id na rota. A rota em si
+// (seção + board) fica em LAST_ROUTE_KEY, no router.
 export const LAST_BOARD_KEY = 'lumix.lastBoard';
 
 export const DEFAULT_COLUMNS = [
@@ -108,6 +111,7 @@ export async function openBoard(id) {
   state.filters = { q: '', tagIds: [], statusKeys: [] };
   state.movedAway.clear();
   storage.set(LAST_BOARD_KEY, id);
+  syncBoardRoute(id);
   emit('board');
   try {
     const [columns, fields, tags, cards] = await Promise.all([
@@ -130,9 +134,27 @@ export async function openBoard(id) {
 }
 
 export function closeBoard() {
+  openSeq++; // descarta um load em andamento
   unsubscribeBoard();
   state.boardId = null;
+  state.loadingBoard = false;
   state.columns = []; state.fields = []; state.tags = []; state.cards = [];
   storage.remove(LAST_BOARD_KEY);
+  syncBoardRoute(null);
+  emit('board');
+}
+
+/**
+ * Sai da seção Boards: solta o realtime e o estado do board aberto, mas mantém
+ * o "último board" para reabrir quando a pessoa voltar.
+ */
+export function suspendBoard() {
+  openSeq++;
+  unsubscribeBoard();
+  state.boardId = null;
+  state.loadingBoard = false;
+  state.columns = []; state.fields = []; state.tags = []; state.cards = [];
+  state.filters = { q: '', tagIds: [], statusKeys: [] };
+  state.movedAway.clear();
   emit('board');
 }

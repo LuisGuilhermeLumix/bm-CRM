@@ -139,8 +139,8 @@ Copie os arquivos para `/var/www/lumix-crm`, crie o `js/config.js` lá e recarre
 
 | Tecla | Ação |
 |---|---|
-| `N` | Novo card no board atual |
-| `/` | Foca na busca |
+| `N` | Novo card no board atual (só na seção Boards) |
+| `/` | Foca na busca (só na seção Boards) |
 | `Esc` | Fecha modal / painel / menu |
 
 ## Estrutura de pastas
@@ -155,14 +155,16 @@ js/supabase.js               client + tradução de erros
 js/auth.js                   login, logout, sessão, perfis
 js/state.js                  estado em memória + pub/sub
 js/boards.js  columns.js  fields.js  tags.js  cards.js   CRUD
-js/realtime.js               assinatura das tabelas do board aberto
+js/router.js                 seções do app + rotas por hash (#/boards/<id>, #/clientes, …)
+js/realtime.js               assinatura das tabelas do board aberto e da lista de boards
 js/ui/kanban.js              render do board + drag-and-drop
 js/ui/cardModal.js           modal do card (autosave, tags, atividade)
 js/ui/boardSettings.js       painel Colunas / Campos / Tags / Board
 js/ui/fieldEditor.js         popover de criar/editar campo (ícone, opções, status)
 js/ui/iconPicker.js          seletor de ícones Lucide com busca
 js/ui/sidebar.js  topbar.js  login.js  dialog.js  toast.js  fieldInputs.js  colorPicker.js …
-js/main.js                   bootstrap
+js/ui/pages/<seção>.js       uma seção por módulo: mount(container) / unmount()
+js/main.js                   bootstrap + troca de seção
 supabase/migrations/001_init.sql          schema, RLS, funções
 supabase/migrations/002_access_allowlist.sql   lista de permitidos (profiles.allowed)
 supabase/migrations/003_field_icon_status.sql  ícone por campo + status vinculado

@@ -191,7 +191,26 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: po
 }
 .sidebar__section { padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; }
 .sidebar__section span { font-size: var(--fs-xs); font-weight: var(--fw-semibold); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); padding-left: 6px; }
-.sidebar__boards { flex: 1; overflow-y: auto; padding: 0 10px; display: flex; flex-direction: column; gap: 2px; }
+.sidebar__boards { padding: 0 10px; display: flex; flex-direction: column; gap: 2px; }
+/* Seções + boards rolam juntos; cabeçalho e rodapé ficam fixos */
+.sidebar__body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; }
+.sidebar__nav { padding: 4px 10px 10px; display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+.nav-item {
+  position: relative; display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border-radius: var(--radius); color: var(--text-2); font-weight: var(--fw-medium);
+  transition: background var(--transition), color var(--transition);
+}
+.nav-item:hover { background: var(--surface-hover); color: var(--text); text-decoration: none; }
+.nav-item.is-active { background: var(--lx-gradient-soft); color: var(--text); }
+.nav-item.is-active::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  border-radius: 3px; background: var(--lx-gradient);
+}
+.nav-item__icon { width: 26px; height: 26px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+.nav-item.is-active .nav-item__icon { color: var(--accent-text); }
+.nav-item__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar__boards-wrap { border-top: 1px solid var(--border); padding-top: 4px; flex-shrink: 0; }
+.sidebar__new-board { padding: 6px 10px 10px; }
 .board-item {
   position: relative; display: flex; align-items: center; width: 100%;
   border-radius: var(--radius); color: var(--text-2); font-weight: var(--fw-medium);
@@ -236,10 +255,12 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: po
 .shell.sidebar-collapsed .sidebar { width: var(--sidebar-collapsed-w); }
 .shell.sidebar-collapsed .brand__text,
 .shell.sidebar-collapsed .board-item__name,
+.shell.sidebar-collapsed .nav-item__label,
 .shell.sidebar-collapsed .sidebar__section span,
 .shell.sidebar-collapsed .user-chip__name,
 .shell.sidebar-collapsed .user-chip .ico,
 .shell.sidebar-collapsed .btn-new-board span { display: none; }
+.shell.sidebar-collapsed .nav-item { justify-content: center; padding: 8px 0; }
 .shell.sidebar-collapsed .sidebar__head { justify-content: center; padding: 14px 0 10px; }
 .shell.sidebar-collapsed .brand { flex: 0; }
 .shell.sidebar-collapsed .board-item__main { justify-content: center; padding: 8px 0; }
@@ -260,6 +281,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: po
   display: flex; align-items: center; gap: 8px;
 }
 .topbar__title:hover { background: var(--surface-hover); }
+.topbar__title--static { cursor: default; }
+.topbar__title--static:hover { background: transparent; }
+.topbar__title--static .ico { width: 18px; height: 18px; color: var(--text-2); }
 .topbar__title-input { font-size: var(--fs-lg); font-weight: var(--fw-semibold); width: 280px; max-width: 40vw; }
 .topbar__spacer { flex: 1; }
 .search { position: relative; width: 260px; }
@@ -332,6 +356,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: po
 .add-column:hover { background: var(--surface-hover); color: var(--text); border-color: var(--text-3); }
 .add-column-form { width: var(--column-w); flex-shrink: 0; padding: 12px; background: var(--column-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); display: flex; flex-direction: column; gap: 10px; }
 .board-empty { flex: 1; display: flex; align-items: center; justify-content: center; }
+
+/* ---------- Seções (fora de Boards) ---------- */
+.page { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: var(--sp-6); }
+.page-placeholder { flex: 1; display: flex; align-items: center; justify-content: center; }
 
 /* ---------- Card ---------- */
 .card {
@@ -613,16 +641,20 @@ kbd { font-family: inherit; font-size: var(--fs-xs); border: 1px solid var(--bor
 
   .sidebar {
     position: fixed; top: 0; left: 0; bottom: 0; z-index: 300;
-    transform: translateX(-100%); width: min(300px, 86vw) !important; box-shadow: var(--shadow-lg);
+    transform: translateX(-100%); width: min(300px, 86vw) !important;
   }
-  .shell.sidebar-open .sidebar { transform: none; }
+  /* sombra só com o drawer aberto: fechado, ela vazava na borda esquerda da tela */
+  .shell.sidebar-open .sidebar { transform: none; box-shadow: var(--shadow-lg); }
   .shell.sidebar-open .sidebar-backdrop { display: block; position: fixed; inset: 0; background: var(--overlay); z-index: 290; }
   .shell.sidebar-collapsed .brand__text,
   .shell.sidebar-collapsed .board-item__name,
+  .shell.sidebar-collapsed .nav-item__label,
   .shell.sidebar-collapsed .sidebar__section span,
   .shell.sidebar-collapsed .user-chip__name,
   .shell.sidebar-collapsed .user-chip .ico,
   .shell.sidebar-collapsed .btn-new-board span { display: initial; }
+  .shell.sidebar-collapsed .nav-item { justify-content: flex-start; padding: 8px 10px; }
+  .page { padding: var(--sp-4); }
   .shell.sidebar-collapsed .board-item__main { justify-content: flex-start; padding: 8px 4px 8px 10px; }
   .shell.sidebar-collapsed .board-item__more { display: inline-flex; }
   .board-item__more { opacity: 1; }
@@ -799,7 +831,7 @@ html.theme-switching .card-modal, html.theme-switching .card-modal__head, html.t
 html.theme-switching .dialog, html.theme-switching .popover, html.theme-switching .settings,
 html.theme-switching .login, html.theme-switching .login__card,
 html.theme-switching .btn, html.theme-switching .input, html.theme-switching .textarea, html.theme-switching .select,
-html.theme-switching .board-item, html.theme-switching .chip {
+html.theme-switching .board-item, html.theme-switching .nav-item, html.theme-switching .chip {
   transition: var(--theme-transition) !important;
 }
 

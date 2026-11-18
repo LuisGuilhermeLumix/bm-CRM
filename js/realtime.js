@@ -10,8 +10,9 @@ import {
 } from './state.js';
 import { normalizeCard, fetchCardById } from './cards.js';
 
-let boardChannel = null;
-let globalChannel = null;
+let boardChannel = null;   // cards/colunas/campos/tags do board aberto
+let boardsChannel = null;  // lista de boards (seção Boards)
+let globalChannel = null;  // perfis
 
 function handle(table, payload) {
   const { eventType, new: n, old: o } = payload;
@@ -131,15 +132,28 @@ export function unsubscribeBoard() {
   }
 }
 
+/** Perfis: vale para o app inteiro (sidebar, avatares em qualquer seção). */
 export function subscribeGlobal() {
   if (globalChannel) return;
   globalChannel = sb.channel('global')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'boards' }, (p) => handle('boards', p))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (p) => handle('profiles', p))
     .subscribe();
 }
 
+/** Lista de boards: só enquanto a seção Boards está aberta. */
+export function subscribeBoards() {
+  if (boardsChannel) return;
+  boardsChannel = sb.channel('boards-list')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'boards' }, (p) => handle('boards', p))
+    .subscribe();
+}
+
+export function unsubscribeBoards() {
+  if (boardsChannel) { sb.removeChannel(boardsChannel); boardsChannel = null; }
+}
+
 export function unsubscribeAll() {
   unsubscribeBoard();
+  unsubscribeBoards();
   if (globalChannel) { sb.removeChannel(globalChannel); globalChannel = null; }
 }

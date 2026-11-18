@@ -1,5 +1,5 @@
-// Topo do board: nome (renomear inline), busca, filtros por tag e por status,
-// configurar, novo card
+// Topo. Em Boards: nome do board (renomear inline), busca, filtros por tag e
+// por status, configurar, novo card. Nas outras seções: só o título da seção.
 import { icon, refreshIcons } from './icons.js';
 import { esc, debounce, isMobile } from '../utils.js';
 import { state, on, getBoard, setFilters, sortedTags, sortedColumns, sortedFields } from '../state.js';
@@ -9,6 +9,7 @@ import { openPopover, openDialog } from './dialog.js';
 import { fieldStatuses } from '../fields.js';
 import { toast, toastError } from './toast.js';
 import { toggleSidebar } from './sidebar.js';
+import { getSection } from '../router.js';
 import { openBoardSettings } from './boardSettings.js';
 import { openCardModal } from './cardModal.js';
 import { chipHtml } from './common.js';
@@ -16,6 +17,7 @@ import { chipHtml } from './common.js';
 let renaming = false;
 
 export function initTopbar() {
+  on('route', render);
   on('board', render);
   on('boards', render);
   on('tags', render);
@@ -28,8 +30,18 @@ function render() {
   const host = document.getElementById('topbar');
   if (!host) return;
   const board = getBoard();
-  if (!board) { host.classList.add('hidden'); host.innerHTML = ''; return; }
   host.classList.remove('hidden');
+  if (!board) {
+    // Fora de Boards (ou em Boards sem nenhum board): menu do celular + título da seção
+    renaming = false;
+    const section = getSection(state.route.section) || getSection('boards');
+    host.innerHTML = `
+      <button class="btn btn--ghost btn--icon btn-menu" id="btnMenu" aria-label="Menu">${icon('menu')}</button>
+      <h1 class="topbar__title topbar__title--static">${icon(section.icon)}<span class="truncate">${esc(section.label)}</span></h1>`;
+    refreshIcons();
+    host.querySelector('#btnMenu').addEventListener('click', toggleSidebar);
+    return;
+  }
   // Não interrompe quem está digitando na busca
   if (document.activeElement?.id === 'searchInput' && host.contains(document.activeElement)) { updateFilterUi(); return; }
 

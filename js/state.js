@@ -1,6 +1,6 @@
 // Estado em memória + pub/sub simples.
 // Eventos: 'boards', 'board' (board aberto/trocado), 'columns', 'fields',
-// 'tags', 'cards', 'filters', 'profiles', 'auth'
+// 'tags', 'cards', 'filters', 'profiles', 'auth', 'route' (seção/rota mudou)
 import { sortByPosition } from './utils.js';
 
 export const state = {
@@ -8,6 +8,7 @@ export const state = {
   user: null,
   profile: null,
   profiles: {},          // id -> profile
+  route: { section: 'boards', boardId: null }, // rota atual (ver js/router.js)
   boards: [],
   boardId: null,
   columns: [],
