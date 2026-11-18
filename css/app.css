@@ -387,6 +387,36 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: po
 }
 .segmented button:hover { color: var(--text); }
 .segmented button.is-active { background: var(--surface-active); color: var(--text); }
+.segmented--scroll { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.segmented--scroll button { flex-shrink: 0; }
+
+/* Financeiro: navegação de período, paginação e linhas de lançamento */
+.period-nav { display: inline-flex; align-items: center; gap: 4px; }
+.period-nav__label { min-width: 132px; text-align: center; font-weight: var(--fw-medium); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.period-custom { display: inline-flex; align-items: center; gap: 6px; }
+.period-custom .input { width: 150px; }
+.stats__wide { grid-column: 1 / -1; }
+.tab__count { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.pager { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-2); }
+.pager .subtle { margin-right: auto; font-variant-numeric: tabular-nums; }
+.table-wrap.is-loading { opacity: 0.55; pointer-events: none; transition: opacity var(--transition); }
+/* Ações ficam presas à direita: a tabela pode rolar na horizontal sem esconder o "Marcar pago" */
+.table__actions { width: 1%; white-space: nowrap; text-align: right; position: sticky; right: 0; background: var(--surface); }
+.table--clickable tbody tr:hover .table__actions { background: linear-gradient(var(--surface-hover), var(--surface-hover)), var(--surface); }
+.table--dense th, .table--dense td { padding-left: 10px; padding-right: 10px; }
+.table--dense td { max-width: 210px; }
+.nowrap { white-space: nowrap; }
+.truncate-cell { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.entry-desc { display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: var(--fw-medium); }
+.entry-desc__rec { display: inline-flex; color: var(--text-3); flex-shrink: 0; }
+.entry-sub { align-items: center; gap: 6px; margin-top: 3px; min-width: 0; }
+.entry-tags { margin-top: 3px; }
+/* telas de notebook: rótulos secundários viram só ícone (o title explica) */
+@media (max-width: 1500px) { .hide-md { display: none; } }
+.show-sm-block { display: none; }
+.recurring { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; min-height: 30px; }
+.recurring__day { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); }
+.recurring__day .input { width: 52px; text-align: center; }
 
 /* Tabelas */
 .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); }
@@ -763,6 +793,11 @@ kbd { font-family: inherit; font-size: var(--fs-xs); border: 1px solid var(--bor
   .filter-search { flex: 1 1 100%; max-width: none; }
   .toolbar__select { flex: 1 1 calc(50% - 4px); min-width: 0; }
   .show-sm { display: inline-flex; }
+  .show-sm-block { display: flex; }
+  .period-nav { flex: 1; justify-content: space-between; }
+  .period-nav__label { min-width: 0; }
+  .period-custom { flex: 1 1 100%; }
+  .period-custom .input { flex: 1; width: auto; min-width: 0; }
   .cell-tags--sm-only { display: flex; }
   .table td { max-width: 56vw; }
   .pct-input .input { width: 56px; }
