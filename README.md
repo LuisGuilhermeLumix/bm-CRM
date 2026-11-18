@@ -184,4 +184,5 @@ supabase/migrations/013_fin_recurring.sql       Financeiro: fin_totals, fin_filt
 supabase/migrations/014_fin_adjustments.sql     logo de cliente (logo_url) + entidades internas (is_internal)
 supabase/migrations/015_fin_reports.sql         Dashboard/Distribuição/Relatórios: fin_monthly_series, fin_by_category, fin_profit_by_operation
 supabase/migrations/016_fin_descriptions.sql    fin_filter_options com as descrições mais usadas (sugestão ao digitar)
+supabase/migrations/017_fin_vault.sql           Credenciais no Supabase Vault (set/get secret) + realtime de fin_notes
 ```
