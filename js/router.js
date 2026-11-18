@@ -105,10 +105,9 @@ function resolve(fromBrowser) {
   if (!handler) return;
   let route = parseHash();
   if (!route) {
-    // Rota escrita errado ("#/xyz") cai em Boards. Sem rota nenhuma (URL limpa,
-    // ou sobra do link de autenticação) volta para a última rota usada.
-    const typedRoute = location.hash.startsWith('#/');
-    route = (!typedRoute && parseHash(storage.get(LAST_ROUTE_KEY) || '')) || { section: 'boards', boardId: null, sub: null };
+    // Rota vazia (URL limpa, ou sobra do link de autenticação) ou escrita errado
+    // ("#/xyz") abre o Dashboard, a tela inicial do sistema.
+    route = { section: 'dashboard', boardId: null, sub: null };
     writeHash(routeHash(route), true);
   }
   state.route = route;
