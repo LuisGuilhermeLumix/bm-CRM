@@ -17,9 +17,12 @@ export const externalClients = (clients) => clients.filter((c) => !isInternal(c)
 /** Só as entidades da própria empresa, por nome. */
 export const internalEntities = (clients) => clients.filter(isInternal).sort(byName);
 
-/** Todas as linhas de fin_clients (clientes + entidades internas). */
+/**
+ * Todas as linhas de fin_clients (clientes + entidades internas), na ordem de
+ * cadastro (só para a paginação ser estável). Cada tela ordena como precisa.
+ */
 export function fetchClients() {
-  return fetchAll(() => sb.from('fin_clients').select('*').order('name').order('id'));
+  return fetchAll(() => sb.from('fin_clients').select('*').order('created_at').order('id'));
 }
 
 export function createClient(data) {

@@ -100,7 +100,19 @@ function clearFilters(c) {
 // ----------------------------------------------------------------------------
 // Dados locais
 // ----------------------------------------------------------------------------
-const byName = (a, b) => a.name.localeCompare(b.name, 'pt-BR') || (a.id > b.id ? 1 : -1);
+// Ordem fixa da lista: prioridade do estágio e, dentro dele, "Cliente desde" do
+// mais antigo para o mais novo (sem data vai para o fim do grupo). O nome não
+// entra na ordenação; empate cai na ordem de cadastro.
+const STAGE_PRIORITY = ['active', 'deal', 'lead', 'paused', 'canceled', 'done'];
+const stageRank = (stage) => { const i = STAGE_PRIORITY.indexOf(stage); return i === -1 ? STAGE_PRIORITY.length : i; };
+const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+function byStageThenSince(a, b) {
+  return (stageRank(a.stage) - stageRank(b.stage))
+    || (Number(!a.since) - Number(!b.since))               // com data antes de sem data
+    || cmp(a.since || '', b.since || '')                   // "YYYY-MM-DD" ordena como texto
+    || cmp(a.created_at || '', b.created_at || '')
+    || cmp(a.id, b.id);
+}
 
 function upsertLocal(c, row) {
   const i = c.clients.findIndex((x) => x.id === row.id);
@@ -133,7 +145,7 @@ function filtered(c) {
     .filter((x) => (!c.stage || x.stage === c.stage)
       && (!c.type || x.operation_type_id === c.type)
       && (!q || fold(x.name).includes(q) || fold(x.contact).includes(q)))
-    .sort(byName);
+    .sort(byStageThenSince);
 }
 
 const typeOf = (c, id) => c.types.find((t) => t.id === id) || null;
