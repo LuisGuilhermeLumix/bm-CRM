@@ -7,6 +7,9 @@ import { state, on } from '../../state.js';
 import { setSubRoute } from '../../router.js';
 import { avatarHtml, chipHtml, clientAvatarHtml, emptyHtml } from '../common.js';
 import { logoFileInputHtml, bindLogoUpload } from '../logoUpload.js';
+import { openUserForm } from '../userForm.js';
+import { fetchAllAccess } from '../../fin/users.js';
+import { loadProfiles } from '../../auth.js';
 import { openDialog, confirmDialog, promptDialog } from '../dialog.js';
 import { openColorPopover } from '../colorPicker.js';
 import { toastError, toastSuccess } from '../toast.js';
@@ -98,18 +101,41 @@ function bindInlineInput(input, getCurrent, save) {
 // ============================================================================
 // USUÁRIOS
 // ============================================================================
-/** Busca os e-mails uma vez por visita; a lista aparece antes e ganha o e-mail quando chega. */
-async function loadEmails(c) {
-  if (c.emails || c.emailsLoading) return;
+/** E-mails, permissões e tipos de operação: uma vez por visita; a lista aparece antes e completa quando chegam. */
+async function loadEmails(c, force = false) {
+  if (c.emailsLoading || (c.usersLoaded && !force)) return;
   c.emailsLoading = true;
-  try {
-    c.emails = await fetchProfileEmails();
-    c.emailsError = null;
-  } catch (e) {
-    c.emailsError = e;
-  }
+  const [emails, access, types] = await Promise.all([
+    fetchProfileEmails().catch((e) => ({ __error: e })),
+    fetchAllAccess().catch((e) => ({ __error: e })),
+    fetchOperationTypes().catch(() => []),
+  ]);
+  c.emails = emails.__error ? null : emails;
+  c.emailsError = emails.__error || null;
+  c.allAccess = access.__error ? null : access;
+  c.accessError = access.__error || null;
+  c.userTypes = types;
   c.emailsLoading = false;
+  c.usersLoaded = true;
   if (ctx === c && c.tab === 'usuarios') renderUsers(c);
+}
+
+/** "3 boards · Finanças · Recuperação" — o que um member enxerga, em uma linha. */
+function accessSummary(c, u) {
+  if (u.role === 'admin') return 'Acesso total';
+  const a = c.allAccess?.[u.id];
+  if (!c.allAccess) return '';
+  if (!a) return 'Nenhuma permissão';
+  const parts = [];
+  if (a.boards.length) parts.push(`${a.boards.length} ${a.boards.length === 1 ? 'board' : 'boards'}`);
+  const other = a.sections.filter((x) => x !== 'boards' && x !== 'dashboard' && !['clientes', 'financeiro', 'distribuicao', 'relatorios'].includes(x));
+  if (a.sections.includes('dashboard')) parts.push('Dashboard');
+  if (a.sections.some((x) => ['clientes', 'financeiro', 'distribuicao', 'relatorios'].includes(x))) {
+    const names = a.operation_types.map((id) => (c.userTypes || []).find((t) => t.id === id)?.name).filter(Boolean);
+    parts.push(`Finanças · ${names.length ? names.join(', ') : 'sem tipo liberado'}`);
+  }
+  other.forEach((x) => parts.push(x));
+  return parts.join(' · ') || 'Nenhuma permissão';
 }
 
 function renderUsers(c) {
@@ -117,24 +143,32 @@ function renderUsers(c) {
   const users = Object.values(state.profiles).sort((a, b) =>
     (Number(b.allowed === true) - Number(a.allowed === true)) || a.name.localeCompare(b.name, 'pt-BR'));
   const allowedCount = users.filter((u) => u.allowed === true).length;
+  const hasRoles = users.some((u) => 'role' in u); // sem a migration 018 não há papel
   body(c).innerHTML = `
     <section class="panel">
       <header class="panel__head">
         <div>
           <h2>Usuários</h2>
-          <p class="hint">Quem está liberado enxerga os boards e todo o financeiro. As contas vêm do login do Supabase, que é compartilhado com outros sistemas — por isso entram bloqueadas.</p>
+          <p class="hint">Administrador vê e faz tudo. Membro vê só as seções, boards e tipos de operação liberados; em finanças, só lê. As contas vêm do login do Supabase, compartilhado com outros sistemas — quem entra por fora chega bloqueado.</p>
         </div>
-        <span class="panel__meta">${allowedCount} de ${users.length} liberados</span>
+        <div class="row">
+          <span class="panel__meta">${allowedCount} de ${users.length} liberados</span>
+          <button type="button" class="btn btn--primary btn--sm" id="usAdd" ${hasRoles ? '' : 'disabled title="Falta aplicar a migration 018_permissions.sql"'}>${icon('user-plus', 'ico--sm')}<span>Adicionar usuário</span></button>
+        </div>
       </header>
       ${c.emailsError ? `<div class="info-box info-box--warn">${icon('triangle-alert')}<span>Não deu para ler os e-mails. ${esc(c.emailsError.message || '')}</span></div>` : ''}
+      ${c.accessError ? `<div class="info-box info-box--warn">${icon('triangle-alert')}<span>${esc(c.accessError.message || '')}</span></div>` : ''}
       <div class="settings-list">
         ${users.map((u) => `
           <div class="settings-row settings-row--user">
             ${avatarHtml(u, 'lg')}
             <span class="settings-row__who">
-              <span class="settings-row__name">${esc(u.name)}${u.id === me ? ' <span class="subtle">(você)</span>' : ''}</span>
+              <span class="settings-row__name">${esc(u.name)}${u.id === me ? ' <span class="subtle">(você)</span>' : ''}
+                ${hasRoles ? chipHtml(u.role === 'admin' ? 'Administrador' : 'Membro', u.role === 'admin' ? '#8b5cf6' : '#6b7280', { small: true }) : ''}</span>
               ${c.emails?.[u.id] ? `<span class="subtle truncate">${esc(c.emails[u.id])}</span>` : ''}
+              ${hasRoles ? `<span class="subtle truncate">${esc(accessSummary(c, u))}</span>` : ''}
             </span>
+            ${hasRoles ? `<button type="button" class="btn btn--sm" data-perm="${u.id}">${icon('shield-check', 'ico--sm')}<span class="hide-sm">Permissões</span></button>` : ''}
             <label class="toggle" title="${u.id === me ? 'Você não pode bloquear o seu próprio acesso' : ''}">
               <input type="checkbox" data-allow="${u.id}" ${u.allowed === true ? 'checked' : ''} ${u.id === me ? 'disabled' : ''} />
               <span class="toggle__track"></span>
@@ -144,6 +178,13 @@ function renderUsers(c) {
       </div>
     </section>`;
   refreshIcons();
+  const reload = async () => { await loadProfiles().catch(() => {}); c.usersLoaded = false; loadEmails(c, true); };
+  body(c).querySelector('#usAdd')?.addEventListener('click', () => openUserForm({ types: c.userTypes || [], onSaved: reload }));
+  body(c).querySelectorAll('[data-perm]').forEach((b) => b.addEventListener('click', () => {
+    const u = state.profiles[b.dataset.perm];
+    if (!u) return;
+    openUserForm({ profile: u, access: c.allAccess?.[u.id], types: c.userTypes || [], onSaved: reload });
+  }));
   body(c).querySelectorAll('[data-allow]').forEach((inp) => inp.addEventListener('change', async () => {
     const id = inp.dataset.allow;
     const allowed = inp.checked;

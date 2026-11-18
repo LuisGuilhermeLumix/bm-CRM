@@ -10,6 +10,7 @@ import { fieldStatuses } from '../fields.js';
 import { toast, toastError } from './toast.js';
 import { toggleSidebar } from './sidebar.js';
 import { getSection } from '../router.js';
+import { canManage } from '../access.js';
 import { openBoardSettings } from './boardSettings.js';
 import { openCardModal } from './cardModal.js';
 import { chipHtml } from './common.js';
@@ -49,7 +50,7 @@ function render() {
     <button class="btn btn--ghost btn--icon btn-menu" id="btnMenu" aria-label="Menu">${icon('menu')}</button>
     ${renaming
       ? `<input class="input topbar__title-input" id="boardTitleInput" value="${esc(board.name)}" autocomplete="off" />`
-      : `<h1 class="topbar__title" id="boardTitle" title="Clique para renomear">
+      : `<h1 class="topbar__title ${canManage() ? '' : 'topbar__title--static'}" id="boardTitle" ${canManage() ? 'title="Clique para renomear"' : ''}>
            <span class="dot" style="--c:${esc(board.color)}"></span><span class="truncate">${esc(board.name)}</span>
          </h1>`}
     <div class="topbar__spacer"></div>
@@ -73,7 +74,7 @@ function bind(host, board) {
 
   // --- renomear inline ---
   const title = host.querySelector('#boardTitle');
-  if (title) {
+  if (title && canManage()) {
     title.addEventListener('click', () => {
       renaming = true;
       render();

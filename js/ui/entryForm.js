@@ -35,7 +35,7 @@ export function clientSelectHtml(id, clients, current, { label = 'Empresa / clie
  * refs: { clients, revenueCats, expenseCats, costCenters }
  * options: { suppliers, revenueDescriptions, expenseDescriptions } (fin_filter_options)
  */
-export function openEntryForm({ kind, entry = null, refs, options = {}, onSaved, onDeleted } = {}) {
+export function openEntryForm({ kind, entry = null, refs, options = {}, onSaved, onDeleted, readOnly = false } = {}) {
   const def = KINDS[kind];
   const isRevenue = kind === 'revenue';
   const isNew = !entry;
@@ -54,7 +54,7 @@ export function openEntryForm({ kind, entry = null, refs, options = {}, onSaved,
     </div>`;
 
   const dlg = openDialog({
-    title: isNew ? def.newLabel : `Editar ${def.one}`,
+    title: readOnly ? def.title.slice(0, -1) : (isNew ? def.newLabel : `Editar ${def.one}`),
     size: 'lg',
     body: `
       <div class="form-field">
@@ -93,7 +93,7 @@ export function openEntryForm({ kind, entry = null, refs, options = {}, onSaved,
         <span class="hint">Recorrente cria sozinha a cobrança de cada mês seguinte, como Pendente, com o mesmo valor, cliente e categoria.</span>
       </div>`}
       <div class="form-field"><label for="efNote">Nota</label><textarea class="textarea" id="efNote" rows="2">${esc(e.note || '')}</textarea></div>`,
-    actions: [
+    actions: readOnly ? [{ label: 'Fechar', cls: 'btn--primary', value: null }] : [
       ...(isNew ? [] : [{ label: `${icon('trash-2')} Excluir`, cls: 'btn--danger-ghost dialog__left', onClick: () => { remove(); return false; } }]),
       { label: 'Cancelar', cls: 'btn--ghost', value: null },
       { label: 'Salvar', cls: 'btn--primary', onClick: () => { save(); return false; } },
@@ -101,6 +101,8 @@ export function openEntryForm({ kind, entry = null, refs, options = {}, onSaved,
   });
 
   const root = dlg.root;
+  // modo leitura (member): tudo travado, só "Fechar"
+  if (readOnly) root.querySelectorAll('.dialog__body input, .dialog__body select, .dialog__body textarea, .dialog__body button').forEach((n) => { n.disabled = true; });
   const $ = (id) => root.querySelector('#' + id);
   const saveBtn = root.querySelector('.dialog__actions .btn--primary');
   const desc = $('efDesc');

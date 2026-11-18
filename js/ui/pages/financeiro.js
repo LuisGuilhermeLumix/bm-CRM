@@ -9,6 +9,7 @@ import { openEntryForm } from '../entryForm.js';
 import { createPeriod, periodRange, mountPeriodPicker } from '../periodPicker.js';
 import { brl, dateShort } from '../../fin/format.js';
 import { isMissingInDb } from '../../fin/db.js';
+import { canManage } from '../../access.js';
 import {
   KINDS, PAGE_SIZE, statusColor, statusLabel, isOpen,
   fetchEntries, fetchTotals, fetchFilterOptions, loadEntryRefs, markPaid, subscribeEntries,
@@ -37,9 +38,9 @@ export function mount(container, route) {
       <div class="toolbar">
         <div id="fnPeriod"></div>
         <div class="toolbar__spacer"></div>
-        <button type="button" class="btn" id="fnCats" title="Categorias e centros de custo">${icon('tags')}<span class="hide-md">Categorias</span></button>
+        ${canManage() ? `<button type="button" class="btn" id="fnCats" title="Categorias e centros de custo">${icon('tags')}<span class="hide-md">Categorias</span></button>
         <button type="button" class="btn" id="fnNewExpense">${icon('plus')}<span>Nova despesa</span></button>
-        <button type="button" class="btn btn--primary" id="fnNewRevenue">${icon('plus')}<span>Nova receita</span></button>
+        <button type="button" class="btn btn--primary" id="fnNewRevenue">${icon('plus')}<span>Nova receita</span></button>` : ''}
       </div>
       <div class="tabs tabs--page" id="fnTabs" role="tablist"></div>
       <div class="page__body" id="fnBody"></div>
@@ -49,9 +50,9 @@ export function mount(container, route) {
 
   const $ = (sel) => container.querySelector(sel);
   mountPeriodPicker($('#fnPeriod'), c.period, () => { storage.set(PERIOD_KEY, c.period.mode); filtersChanged(c); });
-  $('#fnCats').addEventListener('click', () => navigate('#/config/categorias'));
-  $('#fnNewRevenue').addEventListener('click', () => openForm(c, 'revenue', null));
-  $('#fnNewExpense').addEventListener('click', () => openForm(c, 'expense', null));
+  $('#fnCats')?.addEventListener('click', () => navigate('#/config/categorias'));
+  $('#fnNewRevenue')?.addEventListener('click', () => openForm(c, 'revenue', null));
+  $('#fnNewExpense')?.addEventListener('click', () => openForm(c, 'expense', null));
 
   $('#fnTabs').addEventListener('click', (e) => {
     const t = e.target.closest('[data-tab]');
@@ -64,7 +65,7 @@ export function mount(container, route) {
   $('#fnBody').addEventListener('click', (e) => {
     if (e.target.closest('[data-retry]')) { start(c); return; }
     if (e.target.closest('[data-new]')) { openForm(c, c.tab, null); return; }
-    const pay = e.target.closest('[data-pay]');
+    const pay = canManage() && e.target.closest('[data-pay]');
     if (pay) { e.stopPropagation(); payEntry(c, pay.dataset.pay); return; }
     const row = e.target.closest('tr[data-id]');
     if (row) openForm(c, c.tab, c.rows.find((x) => x.id === row.dataset.id));
@@ -163,7 +164,7 @@ function openForm(c, kind, entry) {
     reload(c, { soft: true });
     fetchFilterOptions().then((o) => { if (ctx === c) c.options = o; }); // descrição ou forma de pagamento nova
   };
-  openEntryForm({ kind, entry, refs: c.refs, options: c.options, onSaved: done, onDeleted: done });
+  openEntryForm({ kind, entry, refs: c.refs, options: c.options, onSaved: done, onDeleted: done, readOnly: !canManage() });
 }
 
 async function payEntry(c, id) {
@@ -237,7 +238,7 @@ function renderTable(c) {
       icon: def.icon,
       title: filtered ? `Nenhuma ${def.one} neste filtro` : `Nenhuma ${def.one} ainda`,
       text: filtered ? 'Mude o período ou lance uma nova.' : '',
-      action: `<button type="button" class="btn btn--primary" data-new>${icon('plus')} ${def.newLabel}</button>`,
+      action: canManage() ? `<button type="button" class="btn btn--primary" data-new>${icon('plus')} ${def.newLabel}</button>` : '',
     }));
   }
 
@@ -288,7 +289,7 @@ function renderTable(c) {
             <td class="hide-sm nowrap">${esc(dateShort(x.due_date)) || dash}</td>
             <td class="num">${esc(brl(x.value))}</td>
             <td class="hide-sm">${status}</td>
-            <td class="table__actions">${isOpen(x.status) ? `
+            <td class="table__actions">${isOpen(x.status) && canManage() ? `
               <button type="button" class="btn btn--sm" data-pay="${x.id}" ${paying ? 'disabled' : ''} title="Marcar como pago">
                 ${icon(paying ? 'loader-circle' : 'check', paying ? 'ico--sm spin' : 'ico--sm')}<span class="hide-md">Marcar pago</span>
               </button>` : ''}</td>

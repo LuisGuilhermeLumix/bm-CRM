@@ -51,6 +51,12 @@ export function routeHash(route) {
   return route.sub ? `#/${route.section}/${encodeURIComponent(route.sub)}` : `#/${route.section}`;
 }
 
+/** Troca a rota atual por outra (sem entrar no histórico) e aplica. Usado quando a seção não é permitida. */
+export function replaceRoute(hash) {
+  writeHash(hash, true);
+  resolve(false);
+}
+
 /** Vai para outra rota (entra no histórico e passa pelo fluxo normal de troca de seção). */
 export function navigate(hash) {
   if (location.hash !== hash) location.hash = hash;

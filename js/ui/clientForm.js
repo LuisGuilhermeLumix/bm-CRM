@@ -21,7 +21,7 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
  * client = null cria um novo. types = fin_operation_types já carregados.
  * onSaved também é chamado quando só a logo muda (o modal continua aberto).
  */
-export function openClientForm({ client = null, types = [], onSaved, onDeleted } = {}) {
+export function openClientForm({ client = null, types = [], onSaved, onDeleted, readOnly = false } = {}) {
   const isNew = !client;
   // cópia local: a logo e a cor mudam antes do "Salvar"
   const c = { stage: 'lead', logo_bg: DEFAULT_LOGO, mrr: 0, ...(client || {}) };
@@ -36,7 +36,7 @@ export function openClientForm({ client = null, types = [], onSaved, onDeleted }
   const opt = (value, label, selected) => `<option value="${esc(value)}" ${selected ? 'selected' : ''}>${esc(label)}</option>`;
 
   const dlg = openDialog({
-    title: isNew ? 'Novo cliente' : 'Editar cliente',
+    title: readOnly ? 'Cliente' : (isNew ? 'Novo cliente' : 'Editar cliente'),
     size: 'lg',
     body: `
       <div class="form-row form-row--logo">
@@ -85,7 +85,7 @@ export function openClientForm({ client = null, types = [], onSaved, onDeleted }
         <div class="form-field"><label for="cfSince">Cliente desde</label><input class="input" id="cfSince" type="date" value="${esc(c.since || '')}" /></div>
       </div>
       <div class="form-field"><label for="cfNotes">Observações</label><textarea class="textarea" id="cfNotes" rows="2">${esc(c.notes || '')}</textarea></div>`,
-    actions: [
+    actions: readOnly ? [{ label: 'Fechar', cls: 'btn--primary', value: null }] : [
       ...(isNew ? [] : [{ label: `${icon('trash-2')} Excluir`, cls: 'btn--danger-ghost dialog__left', onClick: () => { remove(); return false; } }]),
       { label: 'Cancelar', cls: 'btn--ghost', value: null },
       { label: 'Salvar', cls: 'btn--primary', onClick: () => { save(); return false; } },
@@ -93,6 +93,8 @@ export function openClientForm({ client = null, types = [], onSaved, onDeleted }
   });
 
   const root = dlg.root;
+  // modo leitura (member): tudo travado, só "Fechar"
+  if (readOnly) root.querySelectorAll('.dialog__body input, .dialog__body select, .dialog__body textarea, .dialog__body button').forEach((n) => { n.disabled = true; });
   const $ = (id) => root.querySelector('#' + id);
   const nameInput = $('cfName');
   const logoBtn = $('cfLogo');
@@ -125,7 +127,7 @@ export function openClientForm({ client = null, types = [], onSaved, onDeleted }
     refreshIcons();
   };
 
-  if (!isNew) {
+  if (!isNew && !readOnly) {
     bindLogoUpload({
       input: $('cfLogoFile'),
       triggers: [logoBtn, $('cfLogoPick')],

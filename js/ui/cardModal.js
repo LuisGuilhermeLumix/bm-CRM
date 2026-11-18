@@ -2,6 +2,7 @@
 // observações, atividade. Salvamento automático com debounce de 500ms e flush
 // ao perder o foco.
 import Sortable from 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/modular/sortable.esm.js';
+import { canManage } from '../access.js';
 import { icon, refreshIcons, fieldIconName } from './icons.js';
 import { esc, el, debounce, autoResize, relativeTime, formatDateTimeBR, randomPaletteColor, isTyping } from '../utils.js';
 import { state, on, getCard, getColumn, getTag, profileOf, sortedColumns, sortedFields, sortedTags, sortedBoards, cardsInColumn } from '../state.js';
@@ -289,8 +290,7 @@ function renderHead(ctx) {
       { label: 'Duplicar', header: true },
       { label: 'Duplicar com informações', icon: 'copy', value: 'dup-full' },
       { label: 'Duplicar só a estrutura', icon: 'layout-template', value: 'dup-struct' },
-      'sep',
-      { label: others ? 'Mover para outro board' : 'Mover para outro board (crie outro board antes)', icon: 'arrow-right-left', value: 'move', disabled: !others },
+      ...(canManage() ? ['sep', { label: others ? 'Mover para outro board' : 'Mover para outro board (crie outro board antes)', icon: 'arrow-right-left', value: 'move', disabled: !others }] : []),
     ], (v) => {
       if (v === 'dup-full') duplicateFlow(ctx, true);
       if (v === 'dup-struct') duplicateFlow(ctx, false);

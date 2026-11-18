@@ -7,6 +7,7 @@ import { esc, storage, isMobile } from '../utils.js';
 import { state, on, sortedBoards } from '../state.js';
 import { openBoard, reorderBoards } from '../boards.js';
 import { NAV, getSection, navGroupOf, routeHash } from '../router.js';
+import { canSection, canManage } from '../access.js';
 import { signOut } from '../auth.js';
 import { currentTheme, toggleTheme } from './theme.js';
 import { openMenu, pushClosable, removeClosable } from './dialog.js';
@@ -99,11 +100,12 @@ function render() {
         <span class="nav-item__label">${esc(s.label)}</span>
       </a>`;
   };
+  const manage = canManage(); // member: sem criar, duplicar, reordenar nem menu de board
   const boardsBlock = () => `
     <div class="sidebar__boards-wrap">
       <div class="sidebar__section">
         <span>Boards</span>
-        <button class="btn btn--ghost btn--icon btn--sm btn-new-board" title="Novo board">${icon('plus')}</button>
+        ${manage ? `<button class="btn btn--ghost btn--icon btn--sm btn-new-board" title="Novo board">${icon('plus')}</button>` : ''}
       </div>
       <nav class="sidebar__boards" id="boardsList" aria-label="Boards">
         ${boards.map((b) => `
@@ -112,15 +114,17 @@ function render() {
               <span class="board-item__icon">${icon(b.icon || 'kanban')}</span>
               <span class="board-item__name">${esc(b.name)}</span>
             </button>
-            <button type="button" class="board-item__more" data-board-menu title="Mais ações" aria-label="Mais ações do board ${esc(b.name)}">${icon('ellipsis')}</button>
+            ${manage ? `<button type="button" class="board-item__more" data-board-menu title="Mais ações" aria-label="Mais ações do board ${esc(b.name)}">${icon('ellipsis')}</button>` : ''}
           </div>`).join('')}
-        ${!boards.length ? emptyHtml({ icon: 'layout-grid', text: 'Nenhum board ainda.', small: true }) : ''}
+        ${!boards.length ? emptyHtml({ icon: 'layout-grid', text: manage ? 'Nenhum board ainda.' : 'Nenhum board liberado.', small: true }) : ''}
       </nav>
-      <div class="sidebar__new-board">
+      ${manage ? `<div class="sidebar__new-board">
         <button class="btn btn--block btn-new-board">${icon('plus')}<span>Novo board</span></button>
-      </div>
+      </div>` : ''}
     </div>`;
   const navGroup = (g) => {
+    const items = g.items.filter(canSection);
+    if (!items.length) return '';
     const open = isGroupOpen(g.group);
     return `
       <div class="nav-group ${open ? 'is-open' : ''} ${g.items.includes(section) ? 'has-active' : ''}" data-group="${g.group}">
@@ -130,7 +134,7 @@ function render() {
           ${icon('chevron-down', 'ico--sm nav-group__chev')}
         </button>
         <div class="nav-group__items">
-          ${g.items.map(navItem).join('')}
+          ${items.map(navItem).join('')}
           ${inBoards && g.items.includes('boards') ? boardsBlock() : ''}
         </div>
       </div>`;
@@ -146,7 +150,7 @@ function render() {
     </div>
     <div class="sidebar__body">
       <nav class="sidebar__nav" aria-label="Seções">
-        ${NAV.map((n) => (n.group ? navGroup(n) : navItem(n.section))).join('')}
+        ${NAV.map((n) => (n.group ? navGroup(n) : (canSection(n.section) ? navItem(n.section) : ''))).join('')}
       </nav>
     </div>
     <div class="sidebar__footer">
@@ -208,7 +212,7 @@ function render() {
   });
 
   const list = host.querySelector('#boardsList');
-  if (list && boards.length > 1) {
+  if (list && manage && boards.length > 1) {
     sortable = new Sortable(list, {
       draggable: '.board-item', animation: 150, delay: 150, delayOnTouchOnly: true, ghostClass: 'sortable-ghost',
       onEnd: () => setTimeout(() => {

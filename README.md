@@ -185,4 +185,6 @@ supabase/migrations/014_fin_adjustments.sql     logo de cliente (logo_url) + ent
 supabase/migrations/015_fin_reports.sql         Dashboard/Distribuição/Relatórios: fin_monthly_series, fin_by_category, fin_profit_by_operation
 supabase/migrations/016_fin_descriptions.sql    fin_filter_options com as descrições mais usadas (sugestão ao digitar)
 supabase/migrations/017_fin_vault.sql           Credenciais no Supabase Vault (set/get secret) + realtime de fin_notes
+supabase/migrations/018_permissions.sql         papéis (admin/member), crm_access e RLS por board e tipo de operação
+supabase/functions/admin-create-user/           Edge Function: admin cria usuário já liberado, com permissões
 ```

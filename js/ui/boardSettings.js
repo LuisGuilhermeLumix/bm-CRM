@@ -13,6 +13,7 @@ import { colorGridHtml, bindColorGrid, openColorPopover } from './colorPicker.js
 import { openIconPicker } from './iconPicker.js';
 import { openFieldEditor } from './fieldEditor.js';
 import { duplicateBoardFlow } from './boardForm.js';
+import { canManage } from '../access.js';
 import { openDialog, confirmDialog, pushClosable, removeClosable, closeAllPopovers } from './dialog.js';
 import { toast, toastError, toastSuccess } from './toast.js';
 
@@ -458,7 +459,9 @@ function renderBoardTab(body) {
   if (!board) return;
   const archived = state.cards.filter((c) => c.archived).sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1));
   const boardIcon = board.icon || 'kanban';
+  const manage = canManage();
   body.innerHTML = `
+    <div class="board-admin ${manage ? '' : 'hidden'}">
     <div class="form-field">
       <label>Nome do board</label>
       <input class="input" id="bName" value="${esc(board.name)}" autocomplete="off" />
@@ -471,6 +474,7 @@ function renderBoardTab(body) {
       <label>Ícone</label>
       <div><button type="button" class="btn icon-btn" id="bIcon">${icon(boardIcon)}<span>${esc(boardIcon)}</span>${icon('chevron-down', 'ico--sm')}</button></div>
     </div>
+    </div>
     <div class="section">
       <div class="section__title">${icon('archive')} Cards arquivados (${archived.length})</div>
       ${archived.length ? `<div class="settings-list">${archived.map((c) => `
@@ -482,7 +486,7 @@ function renderBoardTab(body) {
         </div>`).join('')}</div>`
       : '<p class="hint">Nenhum card arquivado. Cards arquivados saem do kanban mas podem ser restaurados aqui.</p>'}
     </div>
-    <div class="section">
+    <div class="section ${manage ? '' : 'hidden'}">
       <div class="section__title">${icon('copy')} Duplicar board</div>
       <p class="hint">Cria "${esc(board.name)} (cópia)" logo abaixo deste na barra lateral e abre o board novo.</p>
       <div class="row" style="flex-wrap:wrap">
@@ -490,7 +494,7 @@ function renderBoardTab(body) {
         <button type="button" class="btn" id="bDupStruct">${icon('layout-template')} Só a estrutura</button>
       </div>
     </div>
-    <div class="danger-zone">
+    <div class="danger-zone ${manage ? '' : 'hidden'}">
       <h4>Zona de perigo</h4>
       <p class="muted">Excluir o board apaga colunas, campos, tags e todos os ${state.cards.length} cards. Não dá para desfazer.</p>
       <div><button type="button" class="btn btn--danger" id="bDelete">${icon('trash-2')} Excluir board</button></div>

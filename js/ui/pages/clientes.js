@@ -10,6 +10,7 @@ import { STAGES, stageOf, brl, dateShort, fold } from '../../fin/format.js';
 import { isMissingInDb } from '../../fin/db.js';
 import { fetchClients, subscribeClients, isInternal } from '../../fin/clients.js';
 import { fetchOperationTypes } from '../../fin/refs.js';
+import { canManage } from '../../access.js';
 
 let ctx = null; // estado da página montada (null fora da seção)
 
@@ -35,7 +36,7 @@ export function mount(container) {
           <option value="">Todos os tipos</option>
         </select>
         <div class="toolbar__spacer"></div>
-        <button type="button" class="btn btn--primary" id="clNew">${icon('plus')}<span>Novo cliente</span></button>
+        ${canManage() ? `<button type="button" class="btn btn--primary" id="clNew">${icon('plus')}<span>Novo cliente</span></button>` : ''}
       </div>
       <div class="page__body" id="clBody"></div>
     </div>`;
@@ -45,7 +46,7 @@ export function mount(container) {
   $('#clSearch').addEventListener('input', debounce(() => { c.q = $('#clSearch').value; renderBody(c); }, 120));
   $('#clStage').addEventListener('change', (e) => { c.stage = e.target.value; renderBody(c); });
   $('#clType').addEventListener('change', (e) => { c.type = e.target.value; renderBody(c); });
-  $('#clNew').addEventListener('click', () => openForm(c, null));
+  $('#clNew')?.addEventListener('click', () => openForm(c, null));
   $('#clBody').addEventListener('click', (e) => {
     if (e.target.closest('[data-retry]')) { load(c); return; }
     if (e.target.closest('[data-new]')) { openForm(c, null); return; }
@@ -153,6 +154,7 @@ const typeOf = (c, id) => c.types.find((t) => t.id === id) || null;
 function openForm(c, client) {
   openClientForm({
     client,
+    readOnly: !canManage(),
     types: c.types,
     onSaved: (row) => { if (ctx === c && upsertLocal(c, row)) { renderStats(c); renderBody(c); } },
     onDeleted: (id) => { if (ctx === c && removeLocal(c, id)) { renderStats(c); renderBody(c); } },
@@ -205,7 +207,7 @@ function renderBody(c) {
   if (!c.clients.length) {
     return state(emptyHtml({
       icon: 'users', title: 'Nenhum cliente ainda', text: 'Cadastre o primeiro cliente para acompanhar o MRR e os estágios.',
-      action: `<button type="button" class="btn btn--primary" data-new>${icon('plus')} Novo cliente</button>`,
+      action: canManage() ? `<button type="button" class="btn btn--primary" data-new>${icon('plus')} Novo cliente</button>` : '',
     }));
   }
   const rows = filtered(c);

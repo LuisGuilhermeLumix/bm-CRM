@@ -14,6 +14,7 @@ import { externalClients, subscribeClients } from '../../fin/clients.js';
 import { fetchOperationTypes, fetchSettings, SETTING_DEFAULTS } from '../../fin/refs.js';
 import { fetchTotals, fetchFilterOptions, loadEntryRefs, subscribeEntries } from '../../fin/entries.js';
 import { fetchMonthlySeries } from '../../fin/reports.js';
+import { canManage } from '../../access.js';
 
 const MAX_ALL_MONTHS = 24;
 const brlCompact = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact', maximumFractionDigits: 1 });
@@ -39,9 +40,9 @@ export function mount(container) {
       <div class="toolbar">
         <div id="dbPeriod"></div>
         <div class="toolbar__spacer"></div>
-        <button type="button" class="btn" id="dbNewClient">${icon('user-plus')}<span>Novo cliente</span></button>
+        ${canManage() ? `<button type="button" class="btn" id="dbNewClient">${icon('user-plus')}<span>Novo cliente</span></button>
         <button type="button" class="btn" id="dbNewExpense">${icon('plus')}<span>Nova despesa</span></button>
-        <button type="button" class="btn btn--primary" id="dbNewRevenue">${icon('plus')}<span>Nova receita</span></button>
+        <button type="button" class="btn btn--primary" id="dbNewRevenue">${icon('plus')}<span>Nova receita</span></button>` : ''}
       </div>
       <div id="dbWarn"></div>
       <div class="stats" id="dbStats"></div>
@@ -66,9 +67,9 @@ export function mount(container) {
 
   const $ = (sel) => container.querySelector(sel);
   mountPeriodPicker($('#dbPeriod'), c.period, () => reload(c));
-  $('#dbNewRevenue').addEventListener('click', () => openEntry(c, 'revenue'));
-  $('#dbNewExpense').addEventListener('click', () => openEntry(c, 'expense'));
-  $('#dbNewClient').addEventListener('click', () => {
+  $('#dbNewRevenue')?.addEventListener('click', () => openEntry(c, 'revenue'));
+  $('#dbNewExpense')?.addEventListener('click', () => openEntry(c, 'expense'));
+  $('#dbNewClient')?.addEventListener('click', () => {
     if (!c.refs) return;
     openClientForm({ types: c.types, onSaved: () => { if (ctx === c) loadRefs(c).then(() => renderStats(c)); } });
   });

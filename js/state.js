@@ -9,6 +9,7 @@ export const state = {
   profile: null,
   profiles: {},          // id -> profile
   route: { section: 'boards', boardId: null, sub: null }, // rota atual (ver js/router.js)
+  access: null,          // permissões do usuário logado (ver js/access.js)
   boards: [],
   boardId: null,
   columns: [],

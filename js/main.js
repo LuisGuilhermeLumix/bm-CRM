@@ -4,7 +4,8 @@ import { state, on, emit, sortedBoards } from './state.js';
 import { getSession, onAuthChange, loadProfiles, signOut } from './auth.js';
 import { loadBoards, openBoard, closeBoard, suspendBoard, createFirstBoard, LAST_BOARD_KEY } from './boards.js';
 import { subscribeGlobal, subscribeBoards, unsubscribeBoards, unsubscribeAll } from './realtime.js';
-import { startRouter, stopRouter, isRouterActive, syncBoardRoute } from './router.js';
+import { startRouter, stopRouter, isRouterActive, syncBoardRoute, replaceRoute } from './router.js';
+import { loadAccess, canSection, canManage, firstSection } from './access.js';
 import { fetchColumns } from './columns.js';
 import { fetchFields } from './fields.js';
 import { fetchTags } from './tags.js';
@@ -81,7 +82,7 @@ function teardown() {
   unsubscribeAll();
   closeLayers();
   state.session = null; state.user = null; state.profile = null;
-  state.boards = []; state.boardId = null;
+  state.boards = []; state.boardId = null; state.access = null;
   state.columns = []; state.fields = []; state.tags = []; state.cards = [];
 }
 
@@ -119,6 +120,13 @@ async function startApp(session) {
     renderNoAccess(host, { email: state.user.email, onSignOut: () => signOut().catch(toastError) });
     return;
   }
+
+  try {
+    await loadAccess();
+  } catch (e) {
+    toastError(e);
+  }
+  if (!started) return;
 
   try {
     await loadBoards();
@@ -165,6 +173,21 @@ function applyRoute(route, fromBrowser) {
   const boardEl = document.getElementById('board');
   const pageEl = document.getElementById('page');
   if (!boardEl || !pageEl) return;
+
+  // seção não liberada para este usuário: vai para a primeira que ele pode ver
+  if (!canSection(route.section)) {
+    const first = firstSection();
+    if (first) { replaceRoute(`#/${first}`); return; }
+    unmountPage();
+    if (boardsLive) { boardsLive = false; unsubscribeBoards(); }
+    if (state.boardId) suspendBoard();
+    boardEl.classList.add('hidden');
+    pageEl.classList.remove('hidden');
+    pageEl.innerHTML = `<div class="page-placeholder"><div class="empty">${icon('lock')}<h3>Nenhuma seção liberada</h3><p>Peça a um administrador para liberar o que você precisa em Configurações → Usuários.</p></div></div>`;
+    refreshIcons();
+    emit('route');
+    return;
+  }
   unmountPage();
 
   if (route.section === 'boards') {
@@ -234,12 +257,12 @@ function renderWelcome() {
       <div class="welcome__card">
         <span class="brand__logo brand__logo--img"><img src="assets/lumix-logo.png" alt="Lumix" /></span>
         <h2>Bem-vindo ao Lumix OP</h2>
-        <p>Você ainda não tem nenhum board. Comece com um board <b>Clientes</b> já configurado com colunas (Lead → Contato feito → Proposta → Ativo → Perdido) e campos padrão. Dá para mudar tudo depois.</p>
-        <button class="btn btn--primary" id="btnFirstBoard">${icon('plus')} Criar primeiro board</button>
+        ${canManage() ? `<p>Você ainda não tem nenhum board. Comece com um board <b>Clientes</b> já configurado com colunas (Lead → Contato feito → Proposta → Ativo → Perdido) e campos padrão. Dá para mudar tudo depois.</p>
+        <button class="btn btn--primary" id="btnFirstBoard">${icon('plus')} Criar primeiro board</button>` : '<p>Nenhum board liberado para você ainda. Peça a um administrador.</p>'}
       </div>
     </div>`;
   refreshIcons();
-  board.querySelector('#btnFirstBoard').addEventListener('click', async (e) => {
+  board.querySelector('#btnFirstBoard')?.addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     btn.disabled = true;
     btn.innerHTML = `${icon('loader-circle', 'spin')} Criando…`;

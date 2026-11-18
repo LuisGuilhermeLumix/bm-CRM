@@ -4,6 +4,7 @@
 import { icon, refreshIcons } from '../icons.js';
 import { esc, debounce } from '../../utils.js';
 import { navigate } from '../../router.js';
+import { canManage } from '../../access.js';
 import { createPeriod, periodRange, mountPeriodPicker } from '../periodPicker.js';
 import { chipHtml, clientAvatarHtml, emptyHtml } from '../common.js';
 import { confirmDialog } from '../dialog.js';
@@ -37,8 +38,8 @@ export function mount(container) {
         <select class="select toolbar__select" id="dsType" aria-label="Filtrar por tipo de operação"><option value="">Todos os tipos</option></select>
         <div class="toolbar__spacer"></div>
         <span class="reg-status" id="dsStatus"></span>
-        <button type="button" class="btn" id="dsRules" title="Regras de distribuição, sócios, reinvestimento e reserva">${icon('settings-2')}<span class="hide-md">Configurar regras</span></button>
-        <button type="button" class="btn btn--primary" id="dsRegister" disabled></button>
+        <button type="button" class="btn ${canManage() ? '' : 'hidden'}" id="dsRules" title="Regras de distribuição, sócios, reinvestimento e reserva">${icon('settings-2')}<span class="hide-md">Configurar regras</span></button>
+        <button type="button" class="btn btn--primary ${canManage() ? '' : 'hidden'}" id="dsRegister" disabled></button>
       </div>
       <div id="dsBody"></div>
     </div>`;
@@ -143,7 +144,7 @@ function view(c) {
 }
 
 async function register(c) {
-  if (c.saving || c.loading || c.error) return;
+  if (!canManage() || c.saving || c.loading || c.error) return;
   const v = view(c);
   const m = monthOf(c);
   if (!v.toRegister.length) return;
