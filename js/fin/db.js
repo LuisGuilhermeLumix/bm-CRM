@@ -25,8 +25,9 @@ export async function countRows(table, column, value) {
 /** O erro é de tabela/função que ainda não existe no banco (migration não aplicada)? */
 export function isMissingInDb(err) {
   const c = err?.cause || err;
-  // PGRST202 função, PGRST204 coluna, PGRST205 tabela (cache do PostgREST); 42P01/42703/42883 direto do Postgres
-  return ['PGRST202', 'PGRST204', 'PGRST205', '42P01', '42703', '42883'].includes(c?.code)
+  // PGRST202 função, PGRST204 coluna, PGRST205 tabela (cache do PostgREST); 42P01/42703/42883 direto do
+  // Postgres; 42P10 = upsert sem a unique correspondente
+  return ['PGRST202', 'PGRST204', 'PGRST205', '42P01', '42P10', '42703', '42883'].includes(c?.code)
     || /Could not find the (function|table|'\w+' column)|does not exist/i.test(c?.message || '');
 }
 

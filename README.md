@@ -164,7 +164,9 @@ js/ui/boardSettings.js       painel Colunas / Campos / Tags / Board
 js/ui/fieldEditor.js         popover de criar/editar campo (ícone, opções, status)
 js/ui/iconPicker.js          seletor de ícones Lucide com busca
 js/ui/sidebar.js  topbar.js  login.js  dialog.js  toast.js  fieldInputs.js  colorPicker.js …
-js/ui/pages/<seção>.js       uma seção por módulo: mount(container) / unmount()
+js/ui/pages/<seção>.js       uma seção por módulo: mount(container, route) / unmount()
+js/ui/periodPicker.js        seletor de período (Tudo/Dia/Semana/Mês/Ano/Personalizado) compartilhado
+js/ui/charts.js              gráficos em SVG inline (colunas, linha, barras horizontais), sem lib
 js/main.js                   bootstrap + troca de seção
 supabase/migrations/001_init.sql          schema, RLS, funções
 supabase/migrations/002_access_allowlist.sql   lista de permitidos (profiles.allowed)
@@ -180,4 +182,5 @@ supabase/migrations/011_fin_config.sql          liberar/bloquear usuário pelo a
 supabase/migrations/012_profile_emails.sql      e-mail dos usuários em Configurações (crm_profile_emails)
 supabase/migrations/013_fin_recurring.sql       Financeiro: fin_totals, fin_filter_options, recorrência + pg_cron
 supabase/migrations/014_fin_adjustments.sql     logo de cliente (logo_url) + entidades internas (is_internal)
+supabase/migrations/015_fin_reports.sql         Dashboard/Distribuição/Relatórios: fin_monthly_series, fin_by_category, fin_profit_by_operation
 ```

@@ -8,7 +8,8 @@ import { openPopover } from '../dialog.js';
 import { tagChipsHtml, tagColor } from '../tagsInput.js';
 import { toastError, toastSuccess } from '../toast.js';
 import { openEntryForm } from '../entryForm.js';
-import { brl, dateShort, todayYmd } from '../../fin/format.js';
+import { createPeriod, periodRange, mountPeriodPicker } from '../periodPicker.js';
+import { brl, dateShort } from '../../fin/format.js';
 import { isMissingInDb } from '../../fin/db.js';
 import {
   KINDS, PAGE_SIZE, statusColor, statusLabel, isOpen,
@@ -16,66 +17,17 @@ import {
 } from '../../fin/entries.js';
 
 const PERIOD_KEY = 'lumix.finPeriod';
-const MODES = [
-  { id: 'all', label: 'Tudo' }, { id: 'day', label: 'Dia' }, { id: 'week', label: 'Semana' },
-  { id: 'month', label: 'Mês' }, { id: 'year', label: 'Ano' }, { id: 'custom', label: 'Personalizado' },
-];
-const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-const WEEKDAYS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 
 let ctx = null;
-
-// ----------------------------------------------------------------------------
-// Período — tudo em datas locais "YYYY-MM-DD" (nada de UTC)
-// ----------------------------------------------------------------------------
-const parse = (ymd) => { const [y, m, d] = ymd.split('-').map(Number); return new Date(y, m - 1, d); };
-const fmt = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-
-/** { from, to, label } do período escolhido. Semana vai de segunda a domingo. */
-export function periodRange(p) {
-  const a = parse(p.anchor);
-  const y = a.getFullYear(), m = a.getMonth(), d = a.getDate();
-  switch (p.mode) {
-    case 'day':
-      return { from: p.anchor, to: p.anchor, label: `${WEEKDAYS[a.getDay()]}, ${dateShort(p.anchor)}` };
-    case 'week': {
-      const monday = new Date(y, m, d - ((a.getDay() + 6) % 7));
-      const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
-      return { from: fmt(monday), to: fmt(sunday), label: `${dateShort(fmt(monday)).slice(0, 5)} a ${dateShort(fmt(sunday))}` };
-    }
-    case 'month':
-      return { from: fmt(new Date(y, m, 1)), to: fmt(new Date(y, m + 1, 0)), label: `${MONTHS[m]} ${y}` };
-    case 'year':
-      return { from: `${y}-01-01`, to: `${y}-12-31`, label: String(y) };
-    case 'custom': {
-      const from = p.from || null, to = p.to || null;
-      const label = from && to ? `${dateShort(from)} a ${dateShort(to)}` : from ? `a partir de ${dateShort(from)}` : to ? `até ${dateShort(to)}` : 'Todo o período';
-      return { from, to, label };
-    }
-    default:
-      return { from: null, to: null, label: 'Todo o período' };
-  }
-}
-
-function shiftAnchor(p, dir) {
-  const a = parse(p.anchor);
-  const y = a.getFullYear(), m = a.getMonth(), d = a.getDate();
-  if (p.mode === 'day') return fmt(new Date(y, m, d + dir));
-  if (p.mode === 'week') return fmt(new Date(y, m, d + 7 * dir));
-  if (p.mode === 'month') return fmt(new Date(y, m + dir, 1));
-  if (p.mode === 'year') return fmt(new Date(y + dir, m, 1));
-  return p.anchor;
-}
 
 // ----------------------------------------------------------------------------
 // Montagem
 // ----------------------------------------------------------------------------
 export function mount(container, route) {
-  const savedMode = storage.get(PERIOD_KEY);
   const c = ctx = {
     container, offs: [], seq: 0,
     tab: route?.sub === KINDS.expense.sub ? 'expense' : 'revenue',
-    period: { mode: MODES.some((x) => x.id === savedMode) ? savedMode : 'month', anchor: todayYmd(), from: '', to: '' },
+    period: createPeriod(storage.get(PERIOD_KEY) || 'month'), // lembra o tipo de período; a data volta para hoje
     tags: [], page: { revenue: 0, expense: 0 },
     rows: [], count: null, totals: null, totalsError: null,
     refs: null, options: { tags: [], suppliers: [] },
@@ -85,19 +37,7 @@ export function mount(container, route) {
     <div class="page__inner">
       <div class="stats" id="fnStats"></div>
       <div class="toolbar">
-        <div class="segmented segmented--scroll" role="group" aria-label="Período">
-          ${MODES.map((x) => `<button type="button" data-mode="${x.id}">${x.label}</button>`).join('')}
-        </div>
-        <div class="period-nav" id="fnNav">
-          <button type="button" class="btn btn--icon btn--sm" id="fnPrev" aria-label="Período anterior">${icon('chevron-left')}</button>
-          <span class="period-nav__label" id="fnLabel"></span>
-          <button type="button" class="btn btn--icon btn--sm" id="fnNext" aria-label="Próximo período">${icon('chevron-right')}</button>
-        </div>
-        <div class="period-custom hidden" id="fnCustom">
-          <input class="input" type="date" id="fnFrom" aria-label="De" />
-          <span class="subtle">a</span>
-          <input class="input" type="date" id="fnTo" aria-label="Até" />
-        </div>
+        <div id="fnPeriod"></div>
         <button type="button" class="btn" id="fnTags" title="Filtrar por tag">${icon('tag')}<span>Tags</span><span class="filter-badge hidden" id="fnTagBadge"></span></button>
         <div class="toolbar__spacer"></div>
         <button type="button" class="btn" id="fnCats" title="Categorias e centros de custo">${icon('tags')}<span class="hide-md">Categorias</span></button>
@@ -111,18 +51,7 @@ export function mount(container, route) {
   refreshIcons();
 
   const $ = (sel) => container.querySelector(sel);
-  container.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => {
-    if (c.period.mode === b.dataset.mode) return;
-    c.period.mode = b.dataset.mode;
-    c.period.anchor = todayYmd(); // trocar o tipo de período volta para hoje
-    storage.set(PERIOD_KEY, c.period.mode);
-    filtersChanged(c);
-  }));
-  $('#fnPrev').addEventListener('click', () => { c.period.anchor = shiftAnchor(c.period, -1); filtersChanged(c); });
-  $('#fnNext').addEventListener('click', () => { c.period.anchor = shiftAnchor(c.period, +1); filtersChanged(c); });
-  const customChanged = () => { c.period.from = $('#fnFrom').value; c.period.to = $('#fnTo').value; filtersChanged(c); };
-  $('#fnFrom').addEventListener('change', customChanged);
-  $('#fnTo').addEventListener('change', customChanged);
+  mountPeriodPicker($('#fnPeriod'), c.period, () => { storage.set(PERIOD_KEY, c.period.mode); filtersChanged(c); });
   $('#fnTags').addEventListener('click', (e) => openTagFilter(c, e.currentTarget));
   $('#fnCats').addEventListener('click', () => navigate('#/config/categorias'));
   $('#fnNewRevenue').addEventListener('click', () => openForm(c, 'revenue', null));
@@ -301,15 +230,6 @@ function render(c) {
 
 function renderToolbar(c) {
   const $ = (sel) => c.container.querySelector(sel);
-  const mode = c.period.mode;
-  c.container.querySelectorAll('[data-mode]').forEach((b) => {
-    const active = b.dataset.mode === mode;
-    b.classList.toggle('is-active', active);
-    b.setAttribute('aria-pressed', String(active));
-  });
-  $('#fnNav').classList.toggle('hidden', mode === 'all' || mode === 'custom');
-  $('#fnCustom').classList.toggle('hidden', mode !== 'custom');
-  $('#fnLabel').textContent = periodRange(c.period).label;
   const badge = $('#fnTagBadge');
   badge.textContent = c.tags.length;
   badge.classList.toggle('hidden', !c.tags.length);

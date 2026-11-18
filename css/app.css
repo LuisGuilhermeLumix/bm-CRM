@@ -370,7 +370,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: po
 .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .stat__label { display: flex; align-items: center; gap: 6px; color: var(--text-2); font-size: var(--fs-sm); font-weight: var(--fw-medium); }
 .stat__label .ico { width: 14px; height: 14px; color: var(--text-3); }
-.stat__value { font-size: var(--fs-2xl); font-weight: var(--fw-semibold); line-height: 1.2; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat__value { font-size: var(--fs-2xl); font-weight: var(--fw-semibold); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stat__hint { font-size: var(--fs-xs); color: var(--text-3); }
 
 /* Barra de filtros e ações de uma seção */
@@ -389,6 +389,65 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: po
 .segmented button.is-active { background: var(--surface-active); color: var(--text); }
 .segmented--scroll { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 .segmented--scroll button { flex-shrink: 0; }
+
+/* Seletor de período: os filhos entram direto na .toolbar */
+.period { display: contents; }
+
+/* Gráficos (js/ui/charts.js) */
+.chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: var(--sp-4); align-items: start; }
+.chart-grid.is-loading, #dsBody.is-loading { opacity: 0.55; transition: opacity var(--transition); }
+.chart { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.chart__legend { display: flex; flex-wrap: wrap; gap: var(--sp-4); font-size: var(--fs-sm); color: var(--text-2); }
+.chart__key { display: inline-flex; align-items: center; gap: 6px; }
+.chart__swatch { width: 10px; height: 10px; border-radius: 3px; }
+.chart__swatch--line { height: 2px; width: 14px; border-radius: 1px; }
+.chart__plot { position: relative; min-width: 0; }
+.chart__svg svg { display: block; overflow: visible; }
+.chart-empty { display: flex; align-items: center; justify-content: center; min-height: 160px; color: var(--text-3); font-size: var(--fs-sm); text-align: center; }
+/* a cor da série vem só destas classes; o texto do gráfico fica nas cores de texto */
+.tone-revenue { --tone: var(--chart-revenue); }
+.tone-expense { --tone: var(--chart-expense); }
+.tone-profit { --tone: var(--chart-profit); }
+.chart__swatch, .chart-tip__key { background: var(--tone); }
+.chart-mark { fill: var(--tone); pointer-events: none; }
+.chart-mark.is-hot { filter: brightness(1.15); }
+.chart-line { fill: none; stroke: var(--tone); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; pointer-events: none; }
+.chart-dot { fill: var(--tone); stroke: var(--surface); stroke-width: 2; pointer-events: none; }
+.chart-dot.is-hot { stroke-width: 3; }
+.chart-rule { stroke: var(--chart-grid); stroke-width: 1; shape-rendering: crispEdges; }
+.chart-axis { stroke: var(--chart-axis); stroke-width: 1; shape-rendering: crispEdges; }
+.chart-cross { stroke: var(--chart-axis); stroke-width: 1; opacity: 0; pointer-events: none; }
+.chart-cross.is-hot { opacity: 1; }
+.chart-tick { fill: var(--text-3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.chart-label { fill: var(--text-2); font-size: var(--fs-sm); }
+.chart-value { fill: var(--text); font-size: var(--fs-sm); font-weight: var(--fw-medium); font-variant-numeric: tabular-nums; }
+.chart-hit { fill: transparent; cursor: default; outline: none; }
+.chart-hit:hover, .chart-hit.is-hot { fill: var(--surface-hover); }
+.chart-hit:focus-visible { fill: var(--surface-active); }
+.chart-tip {
+  position: absolute; z-index: 5; pointer-events: none; min-width: 120px; max-width: 260px; padding: 8px 10px;
+  background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md); font-size: var(--fs-sm); color: var(--text-2);
+}
+.chart-tip__title { font-size: var(--fs-xs); color: var(--text-3); margin-bottom: 4px; }
+.chart-tip__row { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.chart-tip__row b { color: var(--text); font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
+.chart-tip__key { width: 10px; height: 2px; border-radius: 1px; flex-shrink: 0; }
+.chart__table summary { cursor: pointer; font-size: var(--fs-sm); color: var(--text-3); width: fit-content; }
+.chart__table summary:hover { color: var(--text); }
+.chart__table[open] summary { margin-bottom: var(--sp-2); }
+
+/* Distribuição de Lucro */
+.stack { display: flex; flex-direction: column; gap: var(--sp-4); }
+.reg-status { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.partner-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-3); }
+.partner { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.partner__head { display: flex; align-items: center; gap: 8px; font-weight: var(--fw-medium); color: var(--text-2); min-width: 0; }
+.partner__value { font-size: var(--fs-2xl); font-weight: var(--fw-semibold); line-height: 1.2; }
+.partner__share { font-size: var(--fs-sm); color: var(--text-3); }
+.partner__parts { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); color: var(--text-2); }
+.partner__parts li { display: flex; justify-content: space-between; gap: 8px; min-width: 0; }
+.partner__parts li span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text); }
 
 /* Financeiro: navegação de período, paginação e linhas de lançamento */
 .period-nav { display: inline-flex; align-items: center; gap: 4px; }
@@ -427,6 +486,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: po
 }
 .table td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; max-width: 280px; }
 .table tbody tr:last-child td { border-bottom: none; }
+.table tfoot td { border-top: 1px solid var(--border-strong); border-bottom: none; font-weight: var(--fw-semibold); }
+.table tr.is-flagged td { background: var(--warning-soft); }
 .table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .table--clickable tbody tr { cursor: pointer; transition: background var(--transition); }
 .table--clickable tbody tr:hover { background: var(--surface-hover); }
@@ -1000,7 +1061,7 @@ html.theme-switching .dialog, html.theme-switching .popover, html.theme-switchin
 html.theme-switching .login, html.theme-switching .login__card,
 html.theme-switching .btn, html.theme-switching .input, html.theme-switching .textarea, html.theme-switching .select,
 html.theme-switching .board-item, html.theme-switching .nav-item, html.theme-switching .chip,
-html.theme-switching .stat, html.theme-switching .panel, html.theme-switching .table-wrap, html.theme-switching .tags-input, html.theme-switching .segmented {
+html.theme-switching .stat, html.theme-switching .panel, html.theme-switching .partner, html.theme-switching .entity, html.theme-switching .table-wrap, html.theme-switching .tags-input, html.theme-switching .segmented {
   transition: var(--theme-transition) !important;
 }
 

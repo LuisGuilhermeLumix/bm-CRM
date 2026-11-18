@@ -95,6 +95,16 @@
   --c-gray: #6b7280;
   --c-brown: #9c6644;
 
+  /* Gráficos. Três séries com papel fixo: receita, despesa e lucro. Tons
+     conferidos com o validador de paleta (faixa de luminosidade, croma,
+     separação para daltonismo ≥ 14 e contraste ≥ 3:1 sobre --surface) nos dois
+     temas. Não trocar um valor sem rodar o validador de novo. */
+  --chart-revenue: #8b6cf6;
+  --chart-expense: #d95926;
+  --chart-profit: #1a9aa6;
+  --chart-grid: rgba(255, 255, 255, 0.08);
+  --chart-axis: rgba(255, 255, 255, 0.22);
+
   /* Chips (tag / status / opção): fundo = cor a N%; texto = cor misturada
      com branco (escuro) ou preto (claro) até passar 4.5:1 com as 12 cores. */
   --chip-bg-pct: 15%;
@@ -175,6 +185,12 @@
   --danger: #c81e1e;             /* #ef4444 sobre branco dá 3.8:1 */
   --success: #15803d;
   --warning: #b45309;
+
+  --chart-revenue: #6648d6;
+  --chart-expense: #c9521f;
+  --chart-profit: #0a8f9c;
+  --chart-grid: #e9ebf0;
+  --chart-axis: #c5c9d4;
 
   --chip-bg-pct: 14%;
   --chip-fg-pct: 55%;            /* escurece ~45% (âmbar e verde precisam disso no branco) */
