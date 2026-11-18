@@ -183,4 +183,5 @@ supabase/migrations/012_profile_emails.sql      e-mail dos usuários em Configur
 supabase/migrations/013_fin_recurring.sql       Financeiro: fin_totals, fin_filter_options, recorrência + pg_cron
 supabase/migrations/014_fin_adjustments.sql     logo de cliente (logo_url) + entidades internas (is_internal)
 supabase/migrations/015_fin_reports.sql         Dashboard/Distribuição/Relatórios: fin_monthly_series, fin_by_category, fin_profit_by_operation
+supabase/migrations/016_fin_descriptions.sql    fin_filter_options com as descrições mais usadas (sugestão ao digitar)
 ```

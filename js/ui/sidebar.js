@@ -1,20 +1,23 @@
-// Sidebar em dois níveis: seções do app no topo e, na seção Boards, a lista de
-// boards (novo board, reordenar, menu). Rodapé com usuário e tema.
+// Sidebar: logo, menu (seções avulsas + grupos expansíveis Organização e
+// Finanças) e, com Boards aberto, a lista de boards dentro do grupo
+// Organização (novo board, reordenar, menu). Rodapé com usuário e tema.
 import Sortable from 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/modular/sortable.esm.js';
 import { icon, refreshIcons } from './icons.js';
 import { esc, storage, isMobile } from '../utils.js';
 import { state, on, sortedBoards } from '../state.js';
 import { openBoard, reorderBoards } from '../boards.js';
-import { SECTIONS, routeHash } from '../router.js';
+import { NAV, getSection, navGroupOf, routeHash } from '../router.js';
 import { signOut } from '../auth.js';
 import { currentTheme, toggleTheme } from './theme.js';
 import { openMenu, pushClosable, removeClosable } from './dialog.js';
 import { openProfileEditor } from './profileEditor.js';
 import { toastError } from './toast.js';
 import { openNewBoardDialog, duplicateBoardFlow } from './boardForm.js';
-import { avatarHtml, emptyHtml } from './common.js';
+import { avatarHtml, brandLogoHtml, emptyHtml } from './common.js';
 
 const COLLAPSE_KEY = 'lumix.sidebarCollapsed';
+const GROUPS_KEY = 'lumix.navGroups'; // { <grupo>: false } = recolhido; sem registro = aberto
+let lastSection = null;
 let sortable = null;
 let drawerOpen = false;
 
@@ -22,7 +25,10 @@ const shell = () => document.getElementById('shell');
 
 export function initSidebar() {
   if (storage.get(COLLAPSE_KEY)) shell()?.classList.add('sidebar-collapsed');
-  ['boards', 'board', 'profiles', 'theme', 'route'].forEach((ev) => on(ev, render));
+  ['boards', 'board', 'profiles', 'theme'].forEach((ev) => on(ev, render));
+  on('route', onRoute);
+  lastSection = null;
+  openGroupOfRoute();
   document.getElementById('sidebarBackdrop')?.addEventListener('click', closeSidebar);
   render();
 }
@@ -51,56 +57,97 @@ export function toggleSidebar() {
   }
 }
 
+const groupsState = () => storage.get(GROUPS_KEY, {}) || {};
+const isGroupOpen = (id) => groupsState()[id] !== false;
+function setGroupOpen(id, open) {
+  storage.set(GROUPS_KEY, { ...groupsState(), [id]: open });
+}
+
+/** Ao entrar numa seção, o grupo dela abre sozinho (depois disso a pessoa pode recolher). */
+function openGroupOfRoute() {
+  const section = state.route.section;
+  if (section === lastSection) return;
+  lastSection = section;
+  const group = navGroupOf(section);
+  if (group && !isGroupOpen(group.group)) setGroupOpen(group.group, true);
+}
+
+function onRoute() {
+  openGroupOfRoute();
+  render();
+}
+
 function render() {
   const host = document.getElementById('sidebar');
   if (!host) return;
   const boards = sortedBoards();
   const section = state.route.section;
   const inBoards = section === 'boards';
-  // Fora de Boards o link vai para "#/boards" e o app reabre o último board
-  const sectionHref = (s) => routeHash({ section: s.id, boardId: s.id === 'boards' ? state.boardId : null });
+  // Fora de Boards o link de Boards vai para "#/boards" e o app reabre o último board
   const p = state.profile;
   const theme = currentTheme();
   sortable?.destroy();
   sortable = null;
 
+  const navItem = (id) => {
+    const s = getSection(id);
+    const active = id === section;
+    const href = routeHash({ section: id, boardId: id === 'boards' ? state.boardId : null });
+    return `
+      <a class="nav-item ${active ? 'is-active' : ''}" href="${href}" title="${esc(s.label)}" ${active ? 'aria-current="page"' : ''}>
+        <span class="nav-item__icon">${icon(s.icon)}</span>
+        <span class="nav-item__label">${esc(s.label)}</span>
+      </a>`;
+  };
+  const boardsBlock = () => `
+    <div class="sidebar__boards-wrap">
+      <div class="sidebar__section">
+        <span>Boards</span>
+        <button class="btn btn--ghost btn--icon btn--sm btn-new-board" title="Novo board">${icon('plus')}</button>
+      </div>
+      <nav class="sidebar__boards" id="boardsList" aria-label="Boards">
+        ${boards.map((b) => `
+          <div class="board-item ${b.id === state.boardId ? 'is-active' : ''}" data-board-id="${b.id}" style="--c:${esc(b.color)}">
+            <button type="button" class="board-item__main" title="${esc(b.name)}">
+              <span class="board-item__icon">${icon(b.icon || 'kanban')}</span>
+              <span class="board-item__name">${esc(b.name)}</span>
+            </button>
+            <button type="button" class="board-item__more" data-board-menu title="Mais ações" aria-label="Mais ações do board ${esc(b.name)}">${icon('ellipsis')}</button>
+          </div>`).join('')}
+        ${!boards.length ? emptyHtml({ icon: 'layout-grid', text: 'Nenhum board ainda.', small: true }) : ''}
+      </nav>
+      <div class="sidebar__new-board">
+        <button class="btn btn--block btn-new-board">${icon('plus')}<span>Novo board</span></button>
+      </div>
+    </div>`;
+  const navGroup = (g) => {
+    const open = isGroupOpen(g.group);
+    return `
+      <div class="nav-group ${open ? 'is-open' : ''} ${g.items.includes(section) ? 'has-active' : ''}" data-group="${g.group}">
+        <button type="button" class="nav-group__head" aria-expanded="${open}" title="${esc(g.label)}">
+          <span class="nav-item__icon">${icon(g.icon)}</span>
+          <span class="nav-item__label">${esc(g.label)}</span>
+          ${icon('chevron-down', 'ico--sm nav-group__chev')}
+        </button>
+        <div class="nav-group__items">
+          ${g.items.map(navItem).join('')}
+          ${inBoards && g.items.includes('boards') ? boardsBlock() : ''}
+        </div>
+      </div>`;
+  };
+
   host.innerHTML = `
     <div class="sidebar__head">
       <div class="brand">
-        <span class="brand__logo brand__logo--img"><img src="assets/lumix-logo.png" alt="Lumix BM" /></span>
-        <span class="brand__text">Lumix BM</span>
+        ${brandLogoHtml()}
+        <img class="brand__mark" src="assets/lumix-logo.png" alt="Lumix" />
       </div>
       <button class="btn btn--ghost btn--icon btn--sm btn-collapse-sidebar" id="btnCollapse" title="Recolher / expandir">${icon('panel-left')}</button>
     </div>
     <div class="sidebar__body">
       <nav class="sidebar__nav" aria-label="Seções">
-        ${SECTIONS.map((s) => `
-          <a class="nav-item ${s.id === section ? 'is-active' : ''}" href="${sectionHref(s)}" title="${esc(s.label)}" ${s.id === section ? 'aria-current="page"' : ''}>
-            <span class="nav-item__icon">${icon(s.icon)}</span>
-            <span class="nav-item__label">${esc(s.label)}</span>
-          </a>`).join('')}
+        ${NAV.map((n) => (n.group ? navGroup(n) : navItem(n.section))).join('')}
       </nav>
-      ${inBoards ? `
-      <div class="sidebar__boards-wrap">
-        <div class="sidebar__section">
-          <span>Boards</span>
-          <button class="btn btn--ghost btn--icon btn--sm btn-new-board" title="Novo board">${icon('plus')}</button>
-        </div>
-        <nav class="sidebar__boards" id="boardsList" aria-label="Boards">
-          ${boards.map((b) => `
-            <div class="board-item ${b.id === state.boardId ? 'is-active' : ''}" data-board-id="${b.id}" style="--c:${esc(b.color)}">
-              <button type="button" class="board-item__main" title="${esc(b.name)}">
-                <span class="board-item__icon">${icon(b.icon || 'kanban')}</span>
-                <span class="board-item__name">${esc(b.name)}</span>
-              </button>
-              <button type="button" class="board-item__more" data-board-menu title="Mais ações" aria-label="Mais ações do board ${esc(b.name)}">${icon('ellipsis')}</button>
-            </div>`).join('')}
-          ${!boards.length ? emptyHtml({ icon: 'layout-grid', text: 'Nenhum board ainda.', small: true }) : ''}
-        </nav>
-        <div class="sidebar__new-board">
-          <button class="btn btn--block btn-new-board">${icon('plus')}<span>Novo board</span></button>
-        </div>
-      </div>` : ''}
     </div>
     <div class="sidebar__footer">
       <button class="user-chip" id="userMenu" title="${esc(p?.name || '')}">
@@ -115,6 +162,11 @@ function render() {
   host.querySelector('#btnCollapse').addEventListener('click', toggleSidebar);
   // A navegação é do próprio link (hashchange); aqui só fecha o drawer do celular
   host.querySelectorAll('.nav-item').forEach((a) => a.addEventListener('click', closeSidebar));
+  host.querySelectorAll('.nav-group__head').forEach((b) => b.addEventListener('click', () => {
+    const id = b.closest('[data-group]').dataset.group;
+    setGroupOpen(id, !isGroupOpen(id));
+    render();
+  }));
   host.querySelectorAll('.board-item__main').forEach((b) => b.addEventListener('click', async () => {
     const id = b.closest('[data-board-id]').dataset.boardId;
     closeSidebar();

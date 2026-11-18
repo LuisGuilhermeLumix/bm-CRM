@@ -1,11 +1,9 @@
 // Seção Financeiro (#/financeiro/receitas | despesas): cards do período,
-// filtro de período e tags, tabelas paginadas, "Marcar pago", modais e realtime.
+// filtro de período, tabelas paginadas, "Marcar pago", modais e realtime.
 import { icon, refreshIcons } from '../icons.js';
 import { esc, storage, debounce } from '../../utils.js';
 import { navigate, setSubRoute } from '../../router.js';
 import { chipHtml, clientAvatarHtml, emptyHtml } from '../common.js';
-import { openPopover } from '../dialog.js';
-import { tagChipsHtml, tagColor } from '../tagsInput.js';
 import { toastError, toastSuccess } from '../toast.js';
 import { openEntryForm } from '../entryForm.js';
 import { createPeriod, periodRange, mountPeriodPicker } from '../periodPicker.js';
@@ -28,9 +26,9 @@ export function mount(container, route) {
     container, offs: [], seq: 0,
     tab: route?.sub === KINDS.expense.sub ? 'expense' : 'revenue',
     period: createPeriod(storage.get(PERIOD_KEY) || 'month'), // lembra o tipo de período; a data volta para hoje
-    tags: [], page: { revenue: 0, expense: 0 },
+    page: { revenue: 0, expense: 0 },
     rows: [], count: null, totals: null, totalsError: null,
-    refs: null, options: { tags: [], suppliers: [] },
+    refs: null, options: {}, // options = fin_filter_options: formas de pagamento e descrições já usadas
     loading: true, error: null, paying: new Set(),
   };
   container.innerHTML = `
@@ -38,7 +36,6 @@ export function mount(container, route) {
       <div class="stats" id="fnStats"></div>
       <div class="toolbar">
         <div id="fnPeriod"></div>
-        <button type="button" class="btn" id="fnTags" title="Filtrar por tag">${icon('tag')}<span>Tags</span><span class="filter-badge hidden" id="fnTagBadge"></span></button>
         <div class="toolbar__spacer"></div>
         <button type="button" class="btn" id="fnCats" title="Categorias e centros de custo">${icon('tags')}<span class="hide-md">Categorias</span></button>
         <button type="button" class="btn" id="fnNewExpense">${icon('plus')}<span>Nova despesa</span></button>
@@ -52,7 +49,6 @@ export function mount(container, route) {
 
   const $ = (sel) => container.querySelector(sel);
   mountPeriodPicker($('#fnPeriod'), c.period, () => { storage.set(PERIOD_KEY, c.period.mode); filtersChanged(c); });
-  $('#fnTags').addEventListener('click', (e) => openTagFilter(c, e.currentTarget));
   $('#fnCats').addEventListener('click', () => navigate('#/config/categorias'));
   $('#fnNewRevenue').addEventListener('click', () => openForm(c, 'revenue', null));
   $('#fnNewExpense').addEventListener('click', () => openForm(c, 'expense', null));
@@ -127,7 +123,7 @@ function filtersChanged(c) {
   reload(c);
 }
 
-const filters = (c) => { const r = periodRange(c.period); return { from: r.from, to: r.to, tags: c.tags }; };
+const filters = (c) => { const r = periodRange(c.period); return { from: r.from, to: r.to }; };
 
 /**
  * Busca totais (RPC) e a página da aba aberta. soft = true mantém a tabela na
@@ -165,15 +161,9 @@ function openForm(c, kind, entry) {
   const done = () => {
     if (ctx !== c) return;
     reload(c, { soft: true });
-    fetchFilterOptions().then((o) => { if (ctx === c) c.options = o; }); // tag ou fornecedor novo
+    fetchFilterOptions().then((o) => { if (ctx === c) c.options = o; }); // descrição ou forma de pagamento nova
   };
-  openEntryForm({ kind, entry, refs: c.refs, options: knownOptions(c), onSaved: done, onDeleted: done });
-}
-
-/** Tags conhecidas: as do banco (RPC) + as das linhas na tela (caso a RPC ainda não exista). */
-function knownOptions(c) {
-  const tags = [...new Set([...(c.options.tags || []), ...c.rows.flatMap((r) => r.tags || []), ...c.tags])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  return { tags, suppliers: c.options.suppliers || [] };
+  openEntryForm({ kind, entry, refs: c.refs, options: c.options, onSaved: done, onDeleted: done });
 }
 
 async function payEntry(c, id) {
@@ -190,55 +180,19 @@ async function payEntry(c, id) {
   if (ctx === c) reload(c, { soft: true });
 }
 
-function openTagFilter(c, anchor) {
-  const tags = knownOptions(c).tags;
-  const paint = (pop) => {
-    pop.querySelector('.menu').innerHTML = `
-      ${tags.length ? '<div class="menu__label">Filtrar por tag</div>' : '<div class="popover__empty">Nenhuma tag usada nos lançamentos ainda.</div>'}
-      ${tags.map((t) => `
-        <button type="button" class="menu__item ${c.tags.includes(t) ? 'is-selected' : ''}" data-tag="${esc(t)}">
-          ${chipHtml(t, tagColor(t))}${c.tags.includes(t) ? icon('check', 'check ico--sm') : ''}
-        </button>`).join('')}
-      ${c.tags.length ? `<div class="menu__sep"></div><button type="button" class="menu__item" data-clear>${icon('x')}<span>Limpar filtro</span></button>` : ''}`;
-    refreshIcons();
-  };
-  const pop = openPopover(anchor, '<div class="menu"></div>', { align: 'start' });
-  paint(pop);
-  pop.addEventListener('click', (e) => {
-    const t = e.target.closest('[data-tag]');
-    if (t) {
-      const tag = t.dataset.tag;
-      c.tags = c.tags.includes(tag) ? c.tags.filter((x) => x !== tag) : [...c.tags, tag];
-    } else if (e.target.closest('[data-clear]')) {
-      c.tags = [];
-    } else return;
-    paint(pop);
-    filtersChanged(c);
-  });
-}
-
 // ----------------------------------------------------------------------------
 // Render
 // ----------------------------------------------------------------------------
 function render(c) {
-  renderToolbar(c);
   renderStats(c);
   renderTabs(c);
   renderTable(c);
   renderPager(c);
 }
 
-function renderToolbar(c) {
-  const $ = (sel) => c.container.querySelector(sel);
-  const badge = $('#fnTagBadge');
-  badge.textContent = c.tags.length;
-  badge.classList.toggle('hidden', !c.tags.length);
-  $('#fnTags').classList.toggle('has-filter', c.tags.length > 0);
-}
-
 function renderStats(c) {
   const t = c.totals;
-  const period = periodRange(c.period).label + (c.tags.length ? ` · ${c.tags.length === 1 ? 'tag ' + c.tags[0] : c.tags.length + ' tags'}` : '');
+  const period = periodRange(c.period).label;
   const tile = (ic, label, value) => `
     <div class="stat">
       <div class="stat__label">${icon(ic)}<span>${label}</span></div>
@@ -278,11 +232,11 @@ function renderTable(c) {
   }
   if (c.loading && !c.rows.length) return state(`${icon('loader-circle', 'spin')} Carregando ${def.title.toLowerCase()}…`);
   if (!c.rows.length) {
-    const filtered = c.period.mode !== 'all' || c.tags.length;
+    const filtered = c.period.mode !== 'all';
     return state(emptyHtml({
       icon: def.icon,
       title: filtered ? `Nenhuma ${def.one} neste filtro` : `Nenhuma ${def.one} ainda`,
-      text: filtered ? 'Mude o período ou as tags, ou lance uma nova.' : '',
+      text: filtered ? 'Mude o período ou lance uma nova.' : '',
       action: `<button type="button" class="btn btn--primary" data-new>${icon('plus')} ${def.newLabel}</button>`,
     }));
   }
@@ -305,7 +259,7 @@ function renderTable(c) {
         <thead><tr>
           <th>Descrição</th>
           <th class="hide-sm">${isRevenue ? 'Cliente' : 'Empresa'}</th>
-          ${isRevenue ? '' : '<th class="hide-sm">Fornecedor</th>'}
+          ${isRevenue ? '' : '<th class="hide-sm">Forma de Pagamento</th>'}
           <th class="hide-sm">Categoria</th>
           ${isRevenue ? '' : '<th class="hide-sm">Centro</th>'}
           <th class="hide-sm">Data</th>
@@ -325,7 +279,6 @@ function renderTable(c) {
                 <span class="truncate">${esc(x.description)}</span>
                 ${x.recurring || x.recurring_parent_id ? `<span class="entry-desc__rec" title="${x.recurring ? 'Recorrente: gera a cobrança de cada mês' : 'Gerada pela recorrência'}">${icon('repeat', 'ico--sm')}</span>` : ''}
               </div>
-              ${(x.tags || []).length ? `<div class="cell-tags entry-tags">${tagChipsHtml(x.tags)}</div>` : ''}
               <div class="entry-sub show-sm-block"><span class="subtle truncate">${esc(sub)}</span>${chipHtml(statusLabel(x.status), statusColor(x.status), { small: true })}</div>
             </td>
             <td class="hide-sm">${clientCell(x.client_id)}</td>

@@ -7,7 +7,7 @@ import { storage } from './utils.js';
 
 export const LAST_ROUTE_KEY = 'lumix.lastRoute';
 
-/** Seções do app, na ordem da sidebar. `id` é também o segmento da rota. */
+/** Seções do app. `id` é também o segmento da rota. A ordem do menu está em NAV. */
 export const SECTIONS = [
   { id: 'boards',       label: 'Boards',                icon: 'kanban' },
   { id: 'dashboard',    label: 'Dashboard',             icon: 'layout-dashboard' },
@@ -21,6 +21,17 @@ export const SECTIONS = [
 ];
 
 export const getSection = (id) => SECTIONS.find((s) => s.id === id) || null;
+
+/** Menu lateral: seções avulsas e grupos expansíveis. As rotas não dependem desta ordem. */
+export const NAV = [
+  { section: 'dashboard' },
+  { section: 'clientes' },
+  { group: 'organizacao', label: 'Organização', icon: 'folder-kanban', items: ['boards', 'credenciais', 'anotacoes'] },
+  { group: 'financas', label: 'Finanças', icon: 'landmark', items: ['financeiro', 'distribuicao', 'relatorios'] },
+  { section: 'config' },
+];
+/** Grupo do menu que contém a seção (ou null, se ela é avulsa). */
+export const navGroupOf = (sectionId) => NAV.find((n) => n.group && n.items.includes(sectionId)) || null;
 
 /**
  * "#/boards/<id>" → { section, boardId, sub }. Nas outras seções o segundo

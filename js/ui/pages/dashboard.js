@@ -1,26 +1,37 @@
-// Seção Dashboard (#/dashboard): cards do período, Receita × Despesa e Lucro
-// por mês (6 meses terminando no mês do período) e atalhos de lançamento.
+// Seção Dashboard (#/dashboard): cards do período, Faturamento por mês, Lucro
+// por mês e Receita × Despesa, mais os atalhos de lançamento.
+// Meses dos gráficos: Ano = jan–dez daquele ano; Tudo = do primeiro mês com
+// movimento até o atual (máx. 24); os demais = 6 meses terminando no mês do período.
 import { icon, refreshIcons } from '../icons.js';
 import { esc, debounce } from '../../utils.js';
 import { createPeriod, periodRange, periodEndMonth, mountPeriodPicker, MONTHS } from '../periodPicker.js';
-import { columnsChart, lineChart, chartEmpty } from '../charts.js';
+import { columnsChart, signedLineChart, chartEmpty } from '../charts.js';
 import { openEntryForm } from '../entryForm.js';
 import { openClientForm } from '../clientForm.js';
-import { brl } from '../../fin/format.js';
+import { brl, todayYmd } from '../../fin/format.js';
 import { isMissingInDb } from '../../fin/db.js';
 import { externalClients, subscribeClients } from '../../fin/clients.js';
 import { fetchOperationTypes, fetchSettings, SETTING_DEFAULTS } from '../../fin/refs.js';
 import { fetchTotals, fetchFilterOptions, loadEntryRefs, subscribeEntries } from '../../fin/entries.js';
 import { fetchMonthlySeries } from '../../fin/reports.js';
 
-const SERIES_MONTHS = 6;
+const MAX_ALL_MONTHS = 24;
+const brlCompact = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact', maximumFractionDigits: 1 });
+const numCompact = new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 });
 let ctx = null;
+
+/** Quais meses pedir para os gráficos: { end: "YYYY-MM-01", months, trim }. */
+export function seriesWindow(period) {
+  if (period.mode === 'year') return { end: `${period.anchor.slice(0, 4)}-12-01`, months: 12, trim: false };
+  if (period.mode === 'all') return { end: `${todayYmd().slice(0, 7)}-01`, months: MAX_ALL_MONTHS, trim: true };
+  return { end: periodEndMonth(period), months: 6, trim: false };
+}
 
 export function mount(container) {
   const c = ctx = {
     container, offs: [], charts: [], seq: 0,
     period: createPeriod('month'), // sempre abre no mês atual
-    refs: null, types: [], options: { tags: [], suppliers: [] }, settings: { ...SETTING_DEFAULTS },
+    refs: null, types: [], options: {}, settings: { ...SETTING_DEFAULTS },
     totals: null, totalsError: null, series: null, seriesError: null, error: null, loading: true,
   };
   container.innerHTML = `
@@ -34,14 +45,20 @@ export function mount(container) {
       </div>
       <div id="dbWarn"></div>
       <div class="stats" id="dbStats"></div>
-      <div class="chart-grid" id="dbCharts">
+      <div class="chart-stack" id="dbCharts">
+        <div class="chart-grid">
+          <section class="panel">
+            <header class="panel__head"><div><h2>Faturamento por mês</h2><p class="hint" id="dbRange"></p></div></header>
+            <div id="dbRevenue"></div>
+          </section>
+          <section class="panel">
+            <header class="panel__head"><div><h2>Lucro por mês</h2><p class="hint">Receita paga menos despesas pagas. Abaixo de zero é prejuízo.</p></div></header>
+            <div id="dbLine"></div>
+          </section>
+        </div>
         <section class="panel">
-          <header class="panel__head"><div><h2>Receita × Despesa</h2><p class="hint" id="dbRange"></p></div></header>
+          <header class="panel__head"><div><h2>Receita × Despesa</h2><p class="hint">Pagas, mês a mês.</p></div></header>
           <div id="dbBars"></div>
-        </section>
-        <section class="panel">
-          <header class="panel__head"><div><h2>Lucro por mês</h2><p class="hint">Receita paga menos despesas pagas, mês a mês.</p></div></header>
-          <div id="dbLine"></div>
         </section>
       </div>
     </div>`;
@@ -105,22 +122,36 @@ async function reload(c, { soft = false } = {}) {
   const seq = ++c.seq;
   if (!soft) { c.loading = true; render(c); }
   const range = periodRange(c.period);
+  const win = seriesWindow(c.period);
   const [totals, series] = await Promise.all([
     fetchTotals({ from: range.from, to: range.to }).catch((e) => ({ error: e })),
-    fetchMonthlySeries(periodEndMonth(c.period), SERIES_MONTHS).catch((e) => ({ error: e })),
+    fetchMonthlySeries(win.end, win.months).catch((e) => ({ error: e })),
   ]);
   if (ctx !== c || seq !== c.seq) return;
   c.loading = false;
   c.totalsError = totals.error || null;
   c.totals = totals.error ? null : totals;
   c.seriesError = series.error || null;
-  c.series = series.error ? null : series;
+  c.series = series.error ? null : (win.trim ? trimLeading(series) : series);
   render(c);
+}
+
+/** "Tudo": começa no primeiro mês com movimento (sem movimento nenhum, fica nos últimos 6). */
+function trimLeading(series) {
+  const first = series.findIndex((x) => x.revenue !== 0 || x.expense !== 0);
+  return first === -1 ? series.slice(-6) : series.slice(first);
 }
 
 function openEntry(c, kind) {
   if (!c.refs) return;
-  openEntryForm({ kind, refs: c.refs, options: c.options, onSaved: () => { if (ctx === c) reload(c, { soft: true }); } });
+  openEntryForm({
+    kind, refs: c.refs, options: c.options,
+    onSaved: () => {
+      if (ctx !== c) return;
+      reload(c, { soft: true });
+      fetchFilterOptions().then((o) => { if (ctx === c) c.options = o; }); // descrição ou forma de pagamento nova
+    },
+  });
 }
 
 // ----------------------------------------------------------------------------
@@ -164,14 +195,13 @@ function renderStats(c) {
 function renderCharts(c) {
   c.charts.forEach((off) => off());
   c.charts = [];
-  const bars = c.container.querySelector('#dbBars');
-  const line = c.container.querySelector('#dbLine');
-  const range = c.container.querySelector('#dbRange');
-  c.container.querySelector('#dbCharts').classList.toggle('is-loading', c.loading && !!c.series);
+  const $ = (sel) => c.container.querySelector(sel);
+  const hosts = [$('#dbRevenue'), $('#dbLine'), $('#dbBars')];
+  $('#dbCharts').classList.toggle('is-loading', c.loading && !!c.series);
   if (!c.series) {
     const text = c.seriesError ? 'Sem dados para o gráfico.' : (c.error ? '' : 'Carregando…');
-    range.textContent = '';
-    c.charts.push(chartEmpty(bars, text), chartEmpty(line, text));
+    $('#dbRange').textContent = '';
+    hosts.forEach((h) => c.charts.push(chartEmpty(h, text)));
     return;
   }
   const s = c.series;
@@ -179,17 +209,26 @@ function renderCharts(c) {
   // rótulo curto do eixo; o ano só aparece no primeiro mês e a cada janeiro
   const labels = s.map((x, i) => { const { y, m } = ym(x); const short = MONTHS[m - 1].slice(0, 3).toLowerCase(); return i === 0 || m === 1 ? `${short}/${String(y).slice(2)}` : short; });
   const titles = s.map((x) => { const { y, m } = ym(x); return `${MONTHS[m - 1]} de ${y}`; });
-  range.textContent = `Pagos, de ${titles[0].toLowerCase()} a ${titles[titles.length - 1].toLowerCase()}.`;
-  c.charts.push(columnsChart(bars, {
-    label: `Receita e despesa pagas por mês, ${titles[0]} a ${titles[titles.length - 1]}`,
+  const span = `${titles[0]} a ${titles[titles.length - 1]}`;
+  $('#dbRange').textContent = `Receita paga, de ${titles[0].toLowerCase()} a ${titles[titles.length - 1].toLowerCase()}.`;
+
+  c.charts.push(columnsChart(hosts[0], {
+    label: `Faturamento (receita paga) por mês, ${span}`,
     labels, titles, format: brl,
+    series: [{ label: 'Receita', tone: 'revenue', values: s.map((x) => x.revenue) }],
+    // valor em cima de cada barra: por extenso se couber, senão compacto
+    valueLabel: (v, band) => (band >= 96 ? brl(v) : band >= 64 ? brlCompact.format(v) : numCompact.format(v)),
+  }));
+  c.charts.push(signedLineChart(hosts[1], {
+    label: `Lucro por mês, ${span}`,
+    labels, titles, format: brl, values: s.map((x) => x.profit),
+  }));
+  c.charts.push(columnsChart(hosts[2], {
+    label: `Receita e despesa pagas por mês, ${span}`,
+    labels, titles, format: brl, barGap: 6,
     series: [
       { label: 'Receita', tone: 'revenue', values: s.map((x) => x.revenue) },
       { label: 'Despesa', tone: 'expense', values: s.map((x) => x.expense) },
     ],
-  }));
-  c.charts.push(lineChart(line, {
-    label: `Lucro por mês, ${titles[0]} a ${titles[titles.length - 1]}`,
-    labels, titles, format: brl, values: s.map((x) => x.profit), tone: 'profit', name: 'Lucro',
   }));
 }

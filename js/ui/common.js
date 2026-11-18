@@ -2,6 +2,11 @@
 import { icon } from './icons.js';
 import { esc, initials } from '../utils.js';
 
+/** Logo completa da Lumix: as duas versões vão no HTML e o CSS mostra a do tema atual. */
+export function brandLogoHtml(cls = '') {
+  return `<img class="brand__full brand__full--dark ${cls}" src="assets/lumix-logo-full.png" alt="Lumix" /><img class="brand__full brand__full--light ${cls}" src="assets/lumix-logo-full-light.png" alt="Lumix" />`;
+}
+
 export function chipHtml(label, color, { removable = false, id = '', small = false, title = '' } = {}) {
   return `<span class="chip ${small ? 'chip--sm' : ''}" style="--c:${esc(color || '#6b7280')}" ${id ? `data-id="${esc(id)}"` : ''} ${title ? `title="${esc(title)}"` : ''}>
     <span class="truncate">${esc(label)}</span>

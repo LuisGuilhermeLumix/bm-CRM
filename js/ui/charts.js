@@ -114,24 +114,39 @@ function yAxisSvg(scale, y, x0, x1) {
     <text class="chart-tick" x="${x0 - 8}" y="${y(t)}" text-anchor="end" dominant-baseline="middle">${esc(fmtTick(t))}</text>`).join('');
 }
 
+/** Rótulos do eixo X: com muitos meses, pula alguns para não encavalar. */
+function xLabelsSvg(labels, cx, band, yPos) {
+  const every = Math.max(1, Math.ceil(38 / band));
+  return labels.map((t, i) => (i % every === 0 ? `<text class="chart-tick" x="${cx(i)}" y="${yPos}" text-anchor="middle">${esc(t)}</text>` : '')).join('');
+}
+
 /**
- * Colunas lado a lado.
- * { labels: [curto], titles: [por extenso], series: [{ label, tone, values }], format(v) }
+ * Colunas (uma série ou várias lado a lado).
+ * { labels: [curto], titles: [por extenso], series: [{ label, tone, values }], format(v),
+ *   valueLabel(v, band)  rótulo em cima de cada coluna (só com uma série; band = largura do mês em px),
+ *   barGap  respiro entre colunas do mesmo mês (px) }
  */
-export function columnsChart(host, { labels, titles, series, format, label }) {
+export function columnsChart(host, { labels, titles, series, format, label, valueLabel = null, barGap = 2 }) {
   return mountChart(host, {
     label,
     legend: series,
     table: { head: ['Mês', ...series.map((s) => s.label)], rows: labels.map((_, i) => [titles[i], ...series.map((s) => format(s.values[i]))]) },
     draw(W) {
-      const H = 240, m = { l: 52, r: 6, t: 12, b: 26 };
+      const H = 240, m = { l: 52, r: 6, t: valueLabel ? 24 : 12, b: 26 };
       const iw = W - m.l - m.r, ih = H - m.t - m.b;
       const scale = niceScale(0, Math.max(1, ...series.flatMap((s) => s.values)));
       const y = (v) => m.t + ih - ((v - scale.min) / (scale.max - scale.min)) * ih;
       const band = iw / labels.length;
-      const bw = Math.max(4, Math.min(24, (band * 0.72 - 2 * (series.length - 1)) / series.length));
-      const groupW = bw * series.length + 2 * (series.length - 1); // 2px de respiro entre colunas vizinhas
+      const bw = Math.max(3, Math.min(24, (band * 0.72 - barGap * (series.length - 1)) / series.length));
+      const groupW = bw * series.length + barGap * (series.length - 1);
       const cx = (i) => m.l + band * i + band / 2;
+      // rótulo em cima de cada coluna; quando os meses ficam estreitos demais para o texto
+      // caber sem encavalar, ficam só o maior valor e o último mês com valor (o resto está
+      // no tooltip e na tabela)
+      const vals = series[0].values;
+      const iMax = vals.indexOf(Math.max(...vals));
+      const iLast = vals.reduce((k, v, i) => (v > 0 ? i : k), -1);
+      const labeled = (i) => valueLabel && (band >= 34 || i === iMax || i === iLast);
       const svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
         ${yAxisSvg(scale, y, m.l, W - m.r)}
         ${labels.map((_, i) => `<rect class="chart-hit" data-i="${i}" tabindex="0" x="${m.l + band * i}" y="${m.t}" width="${band}" height="${ih}"
@@ -140,14 +155,16 @@ export function columnsChart(host, { labels, titles, series, format, label }) {
           const v = s.values[i];
           if (!(v > 0)) return '';
           const h = Math.max(1, y(0) - y(v));
-          return `<path class="chart-mark tone-${s.tone}" d="${columnPath(cx(i) - groupW / 2 + k * (bw + 2), y(0) - h, bw, h)}"/>`;
+          const x = cx(i) - groupW / 2 + k * (bw + barGap);
+          return `<path class="chart-mark tone-${s.tone}" data-i="${i}" d="${columnPath(x, y(0) - h, bw, h)}"/>${
+            labeled(i) ? `<text class="chart-value chart-value--sm" x="${x + bw / 2}" y="${y(0) - h - 6}" text-anchor="middle">${esc(valueLabel(v, band))}</text>` : ''}`;
         }).join('')).join('')}
-        ${labels.map((t, i) => `<text class="chart-tick" x="${cx(i)}" y="${H - 8}" text-anchor="middle">${esc(t)}</text>`).join('')}
+        ${xLabelsSvg(labels, cx, band, H - 8)}
       </svg>`;
       return {
         svg,
         onHit: (i) => ({
-          x: cx(i), y: Math.min(...series.map((s) => y(Math.max(0, s.values[i])))),
+          x: cx(i), y: Math.min(...series.map((s) => y(Math.max(0, s.values[i])))) - (valueLabel ? 14 : 0),
           title: titles[i],
           rows: series.map((s) => ({ tone: s.tone, value: format(s.values[i]), label: s.label })),
         }),
@@ -157,13 +174,21 @@ export function columnsChart(host, { labels, titles, series, format, label }) {
 }
 
 /**
- * Linha de uma série só (o título do painel diz o que é; sem caixa de legenda).
- * { labels, titles, values, tone, name, format(v) }
+ * Linha com sinal: cada trecho, cada ponto e a área até o zero ficam na cor do
+ * sinal do valor (tone-profit quando ≥ 0, tone-loss quando < 0). Onde a linha
+ * cruza o zero, o trecho é partido no cruzamento. O sinal nunca depende só da
+ * cor: a linha do zero é destacada e o tooltip diz "Lucro" ou "Prejuízo".
+ * { labels, titles, values, format(v), posName, negName }
  */
-export function lineChart(host, { labels, titles, values, tone, name, format, label }) {
+export function signedLineChart(host, { labels, titles, values, format, label, posName = 'Lucro', negName = 'Prejuízo' }) {
+  const toneOf = (v) => (v >= 0 ? 'profit' : 'loss');
+  const words = (v) => `${v >= 0 ? posName : negName} ${format(Math.abs(v))}`;
   return mountChart(host, {
     label,
-    table: { head: ['Mês', name], rows: labels.map((_, i) => [titles[i], format(values[i])]) },
+    // legenda só quando os dois sinais aparecem
+    legend: values.some((v) => v < 0) && values.some((v) => v >= 0)
+      ? [{ label: posName, tone: 'profit', line: true }, { label: negName, tone: 'loss', line: true }] : [],
+    table: { head: ['Mês', 'Resultado'], rows: labels.map((_, i) => [titles[i], words(values[i])]) },
     draw(W) {
       const H = 240, m = { l: 52, r: 6, t: 26, b: 26 };
       const iw = W - m.l - m.r, ih = H - m.t - m.b;
@@ -171,24 +196,40 @@ export function lineChart(host, { labels, titles, values, tone, name, format, la
       const y = (v) => m.t + ih - ((v - scale.min) / (scale.max - scale.min)) * ih;
       const band = iw / labels.length;
       const cx = (i) => m.l + band * i + band / 2;
+      const y0 = y(0);
+      // trechos já partidos no cruzamento do zero: { x1, y1, x2, y2, tone }
+      const segs = [];
+      for (let i = 0; i < values.length - 1; i++) {
+        const a = values[i], b = values[i + 1];
+        const p1 = { x: cx(i), y: y(a) }, p2 = { x: cx(i + 1), y: y(b) };
+        if ((a >= 0) === (b >= 0)) { segs.push({ ...pt(p1, p2), tone: toneOf(a) }); continue; }
+        const xz = p1.x + (a / (a - b)) * (p2.x - p1.x);
+        segs.push({ ...pt(p1, { x: xz, y: y0 }), tone: toneOf(a) }, { ...pt({ x: xz, y: y0 }, p2), tone: toneOf(b) });
+      }
       const last = values.length - 1;
       const svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
         ${yAxisSvg(scale, y, m.l, W - m.r)}
+        ${segs.map((g) => `<path class="chart-area tone-${g.tone}" d="M${g.x1},${g.y1}L${g.x2},${g.y2}L${g.x2},${y0}L${g.x1},${y0}Z"/>`).join('')}
+        <line class="chart-zero" x1="${m.l}" x2="${W - m.r}" y1="${y0}" y2="${y0}"/>
         ${labels.map((_, i) => `<rect class="chart-hit" data-i="${i}" tabindex="0" x="${m.l + band * i}" y="${m.t}" width="${band}" height="${ih}"
-            aria-label="${esc(`${titles[i]}: ${name} ${format(values[i])}`)}"/>`).join('')}
+            aria-label="${esc(`${titles[i]}: ${words(values[i])}`)}"/>`).join('')}
         ${labels.map((_, i) => `<line class="chart-cross" data-i="${i}" x1="${cx(i)}" x2="${cx(i)}" y1="${m.t}" y2="${m.t + ih}"/>`).join('')}
-        <polyline class="chart-line tone-${tone}" points="${values.map((v, i) => `${cx(i)},${y(v)}`).join(' ')}"/>
-        ${values.map((v, i) => `<circle class="chart-dot tone-${tone}" data-i="${i}" cx="${cx(i)}" cy="${y(v)}" r="4"/>`).join('')}
-        <text class="chart-value" x="${cx(last)}" y="${y(values[last]) - 12}" text-anchor="${last > 0 ? 'end' : 'middle'}" dx="${last > 0 ? 8 : 0}">${esc(format(values[last]))}</text>
-        ${labels.map((t, i) => `<text class="chart-tick" x="${cx(i)}" y="${H - 8}" text-anchor="middle">${esc(t)}</text>`).join('')}
+        ${segs.map((g) => `<line class="chart-line tone-${g.tone}" x1="${g.x1}" y1="${g.y1}" x2="${g.x2}" y2="${g.y2}"/>`).join('')}
+        ${values.map((v, i) => `<circle class="chart-dot tone-${toneOf(v)}" data-i="${i}" cx="${cx(i)}" cy="${y(v)}" r="4"/>`).join('')}
+        <text class="chart-value" x="${cx(last)}" y="${y(values[last]) + (values[last] >= 0 ? -12 : 20)}" text-anchor="${last > 0 ? 'end' : 'middle'}" dx="${last > 0 ? 8 : 0}">${esc(words(values[last]))}</text>
+        ${xLabelsSvg(labels, cx, band, H - 8)}
       </svg>`;
       return {
         svg,
-        onHit: (i) => ({ x: cx(i), y: y(values[i]), title: titles[i], rows: [{ tone, value: format(values[i]), label: name }] }),
+        onHit: (i) => ({
+          x: cx(i), y: Math.min(y(values[i]), y0), title: titles[i],
+          rows: [{ tone: toneOf(values[i]), value: format(Math.abs(values[i])), label: values[i] >= 0 ? posName : negName }],
+        }),
       };
     },
   });
 }
+const pt = (p1, p2) => ({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y });
 
 /**
  * Barras horizontais ranqueadas, uma cor só (a série é uma; o título diz qual).

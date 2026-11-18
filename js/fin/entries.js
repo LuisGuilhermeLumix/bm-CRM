@@ -23,14 +23,13 @@ export const isOpen = (s) => s === 'Pendente' || s === 'Atrasado';
 
 /**
  * Página de lançamentos do período, do mais recente para o mais antigo.
- * O período filtra pela Data (due_date); tags = qualquer uma das escolhidas.
+ * O período filtra pela Data (due_date).
  * Devolve { rows, count }. Página além do fim devolve { rows: [], count: null }.
  */
-export async function fetchEntries(kind, { from = null, to = null, tags = [], page = 0 } = {}) {
+export async function fetchEntries(kind, { from = null, to = null, page = 0 } = {}) {
   let q = sb.from(KINDS[kind].table).select('*', { count: 'exact' });
   if (from) q = q.gte('due_date', from);
   if (to) q = q.lte('due_date', to);
-  if (tags.length) q = q.overlaps('tags', tags);
   const start = page * PAGE_SIZE;
   const { data, count, error } = await q
     .order('due_date', { ascending: false, nullsFirst: false })
@@ -45,9 +44,9 @@ export async function fetchEntries(kind, { from = null, to = null, tags = [], pa
 }
 
 /** Totais e contagens do período, somados no banco (RPC fin_totals). */
-export async function fetchTotals({ from = null, to = null, tags = [] } = {}) {
+export async function fetchTotals({ from = null, to = null } = {}) {
   try {
-    const rows = await run(sb.rpc('fin_totals', { p_from: from, p_to: to, p_tags: tags.length ? tags : null }));
+    const rows = await run(sb.rpc('fin_totals', { p_from: from, p_to: to, p_tags: null }));
     const r = (Array.isArray(rows) ? rows[0] : rows) || {};
     const n = (k) => Number(r[k]) || 0;
     return {
@@ -59,13 +58,21 @@ export async function fetchTotals({ from = null, to = null, tags = [] } = {}) {
   }
 }
 
-/** Tags e fornecedores já usados (RPC fin_filter_options). Sem a RPC, devolve listas vazias. */
+/**
+ * O que já foi usado nos lançamentos (RPC fin_filter_options): formas de
+ * pagamento das despesas e as descrições mais frequentes de cada tipo
+ * ([{ text, n }], migration 016). Sem a RPC, devolve listas vazias.
+ */
 export async function fetchFilterOptions() {
   try {
     const o = await run(sb.rpc('fin_filter_options'));
-    return { tags: o?.tags || [], suppliers: o?.suppliers || [] };
+    return {
+      suppliers: o?.suppliers || [],
+      revenueDescriptions: o?.revenue_descriptions || [],
+      expenseDescriptions: o?.expense_descriptions || [],
+    };
   } catch {
-    return { tags: [], suppliers: [] };
+    return { suppliers: [], revenueDescriptions: [], expenseDescriptions: [] };
   }
 }
 
