@@ -1,5 +1,5 @@
-// Modal de receita / despesa (criar, editar, excluir). Usado no Financeiro e,
-// depois, nos atalhos do Dashboard.
+// Modal de receita / despesa (criar, editar, excluir). Usado no Financeiro e
+// nos atalhos do Dashboard. Um único campo de data: "Data" (due_date).
 import { icon, refreshIcons } from './icons.js';
 import { esc, autoResize, uid } from '../utils.js';
 import { openDialog, confirmDialog } from './dialog.js';
@@ -7,9 +7,26 @@ import { tagsInput } from './tagsInput.js';
 import { moneyInputHtml, bindMoneyInput, moneyValue } from './moneyInput.js';
 import { toastError, toastSuccess } from './toast.js';
 import { todayYmd } from '../fin/format.js';
+import { externalClients, internalEntities } from '../fin/clients.js';
 import { KINDS, STATUSES, createEntry, updateEntry, deleteEntry } from '../fin/entries.js';
 
 const dayOf = (ymd) => Number(String(ymd || '').slice(8, 10)) || null;
+const opt = (value, label, selected) => `<option value="${esc(value)}" ${selected ? 'selected' : ''}>${esc(label)}</option>`;
+
+/** <select> "Empresa / cliente": as entidades internas no topo, depois os clientes. */
+function clientSelectHtml(id, clients, current) {
+  const group = (label, list) => (list.length
+    ? `<optgroup label="${label}">${list.map((x) => opt(x.id, x.name, x.id === current)).join('')}</optgroup>` : '');
+  return `
+    <div class="form-field">
+      <label for="${id}">Empresa / cliente</label>
+      <select class="select" id="${id}">
+        ${opt('', 'Sem empresa / cliente', !current)}
+        ${group('Nossa empresa', internalEntities(clients))}
+        ${group('Clientes', externalClients(clients))}
+      </select>
+    </div>`;
+}
 
 /**
  * openEntryForm({ kind, entry, refs, options, onSaved, onDeleted })
@@ -23,8 +40,6 @@ export function openEntryForm({ kind, entry = null, refs, options = { tags: [], 
   const e = entry || { status: 'Pendente', due_date: todayYmd(), tags: [], value: 0, recurring: false };
   const isGenerated = isRevenue && !!e.recurring_parent_id; // cobrança criada pela recorrência
 
-  const opt = (value, label, selected) => `<option value="${esc(value)}" ${selected ? 'selected' : ''}>${esc(label)}</option>`;
-  const clients = [...refs.clients].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   const cats = isRevenue ? refs.revenueCats : refs.expenseCats;
   // status antigo (Atrasado/Cancelado) continua escolhível só no lançamento que já o tem
   const statuses = STATUSES.includes(e.status) ? STATUSES : [...STATUSES, e.status];
@@ -44,7 +59,7 @@ export function openEntryForm({ kind, entry = null, refs, options = { tags: [], 
         <input class="input" id="efDesc" value="${esc(e.description || '')}" placeholder="${isRevenue ? 'Ex.: Mensalidade de novembro' : 'Ex.: Assinatura da ferramenta'}" autocomplete="off" />
       </div>
       <div class="form-row">
-        ${select('efClient', isRevenue ? 'Cliente' : 'Empresa', clients, e.client_id, isRevenue ? 'Sem cliente' : 'Sem empresa')}
+        ${clientSelectHtml('efClient', refs.clients, e.client_id)}
         ${isRevenue ? select('efCat', 'Categoria', cats, e.category_id, 'Sem categoria') : `
         <div class="form-field">
           <label for="efSupplier">Fornecedor</label>
@@ -57,16 +72,13 @@ export function openEntryForm({ kind, entry = null, refs, options = { tags: [], 
         ${select('efCat', 'Categoria', cats, e.category_id, 'Sem categoria')}
         ${select('efCost', 'Centro de custo', refs.costCenters, e.cost_center_id, 'Sem centro de custo')}
       </div>`}
-      <div class="form-row">
+      <div class="form-row form-row--wrap">
         <div class="form-field"><label for="efValue">Valor</label>${moneyInputHtml({ id: 'efValue', value: e.value })}</div>
+        <div class="form-field"><label for="efDate">Data</label><input class="input" id="efDate" type="date" value="${esc(e.due_date || '')}" /></div>
         <div class="form-field">
           <label for="efStatus">Status</label>
           <select class="select" id="efStatus">${statuses.map((s) => opt(s, s, s === e.status)).join('')}</select>
         </div>
-      </div>
-      <div class="form-row">
-        <div class="form-field"><label for="efDate">Data</label><input class="input" id="efDate" type="date" value="${esc(e.due_date || '')}" /></div>
-        <div class="form-field"><label for="efPaid">Pagamento</label><input class="input" id="efPaid" type="date" value="${esc(e.paid_date || '')}" /></div>
       </div>
       ${!isRevenue ? '' : isGenerated ? `
       <div class="info-box">${icon('repeat')}<span>Cobrança gerada automaticamente por uma receita recorrente. Para parar as próximas, desligue "Recorrente" na receita original.</span></div>` : `
@@ -96,10 +108,6 @@ export function openEntryForm({ kind, entry = null, refs, options = { tags: [], 
   note.addEventListener('input', () => autoResize(note));
   setTimeout(() => autoResize(note), 0);
 
-  // Pago sem data de pagamento: sugere hoje
-  $('efStatus').addEventListener('change', () => {
-    if ($('efStatus').value === 'Pago' && !$('efPaid').value) $('efPaid').value = todayYmd();
-  });
   const recurring = $('efRecurring');
   if (recurring) {
     recurring.addEventListener('change', () => {
@@ -128,15 +136,14 @@ export function openEntryForm({ kind, entry = null, refs, options = { tags: [], 
     if (!(value > 0)) { toastError('Informe um valor maior que zero.'); $('efValue').focus(); return; }
     const dueDate = $('efDate').value;
     if (!dueDate) { toastError('Informe a data do lançamento.'); $('efDate').focus(); return; }
-    const status = $('efStatus').value;
+    // paid_date não entra: a tela trabalha só com a Data (due_date)
     const data = {
       description,
       client_id: $('efClient').value || null,
       category_id: intOrNull($('efCat').value),
       value,
       due_date: dueDate,
-      paid_date: $('efPaid').value || (status === 'Pago' ? todayYmd() : null),
-      status,
+      status: $('efStatus').value,
       tags: tags.get(),
       note: note.value.trim() || null,
     };

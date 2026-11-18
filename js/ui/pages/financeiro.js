@@ -3,11 +3,10 @@
 import { icon, refreshIcons } from '../icons.js';
 import { esc, storage, debounce } from '../../utils.js';
 import { navigate, setSubRoute } from '../../router.js';
-import { chipHtml, emptyHtml } from '../common.js';
+import { chipHtml, clientAvatarHtml, emptyHtml } from '../common.js';
 import { openPopover } from '../dialog.js';
 import { tagChipsHtml, tagColor } from '../tagsInput.js';
 import { toastError, toastSuccess } from '../toast.js';
-import { clientLogoHtml } from '../clientForm.js';
 import { openEntryForm } from '../entryForm.js';
 import { brl, dateShort, todayYmd } from '../../fin/format.js';
 import { isMissingInDb } from '../../fin/db.js';
@@ -377,7 +376,7 @@ function renderTable(c) {
   const text = (v) => (v ? `<span class="truncate-cell">${esc(v)}</span>` : dash);
   const clientCell = (id) => {
     const cl = clients.get(String(id));
-    return cl ? `<div class="cell-main">${clientLogoHtml(cl)}<span class="truncate">${esc(cl.name)}</span></div>` : dash;
+    return cl ? `<div class="cell-main">${clientAvatarHtml(cl)}<span class="truncate">${esc(cl.name)}</span></div>` : dash;
   };
 
   body.innerHTML = `
@@ -390,7 +389,6 @@ function renderTable(c) {
           <th class="hide-sm">Categoria</th>
           ${isRevenue ? '' : '<th class="hide-sm">Centro</th>'}
           <th class="hide-sm">Data</th>
-          ${isRevenue ? '<th class="hide-sm">Pagamento</th>' : ''}
           <th class="num">Valor</th>
           <th class="hide-sm">Status</th>
           <th class="table__actions"><span class="sr-only">Ações</span></th>
@@ -415,11 +413,10 @@ function renderTable(c) {
             <td class="hide-sm">${text(cats.get(String(x.category_id))?.name)}</td>
             ${isRevenue ? '' : `<td class="hide-sm">${text(costs.get(String(x.cost_center_id))?.name)}</td>`}
             <td class="hide-sm nowrap">${esc(dateShort(x.due_date)) || dash}</td>
-            ${isRevenue ? `<td class="hide-sm nowrap">${esc(dateShort(x.paid_date)) || dash}</td>` : ''}
             <td class="num">${esc(brl(x.value))}</td>
             <td class="hide-sm">${status}</td>
             <td class="table__actions">${isOpen(x.status) ? `
-              <button type="button" class="btn btn--sm" data-pay="${x.id}" ${paying ? 'disabled' : ''} title="Marcar como pago hoje">
+              <button type="button" class="btn btn--sm" data-pay="${x.id}" ${paying ? 'disabled' : ''} title="Marcar como pago">
                 ${icon(paying ? 'loader-circle' : 'check', paying ? 'ico--sm spin' : 'ico--sm')}<span class="hide-md">Marcar pago</span>
               </button>` : ''}</td>
           </tr>`;

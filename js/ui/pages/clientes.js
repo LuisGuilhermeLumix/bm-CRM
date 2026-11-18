@@ -1,14 +1,14 @@
 // Seção Clientes (#/clientes): indicadores, lista com filtros, modal de
-// criar/editar e realtime em fin_clients.
+// criar/editar e realtime em fin_clients. As entidades internas (Lumix,
+// Lumix REC) não aparecem aqui: ficam em Configurações → Empresa.
 import { icon, refreshIcons } from '../icons.js';
 import { esc, debounce } from '../../utils.js';
 import { on, profileOf, stable } from '../../state.js';
-import { chipHtml, avatarHtml, emptyHtml } from '../common.js';
-import { tagChipsHtml } from '../tagsInput.js';
-import { openClientForm, clientLogoHtml } from '../clientForm.js';
+import { chipHtml, avatarHtml, clientAvatarHtml, emptyHtml } from '../common.js';
+import { openClientForm } from '../clientForm.js';
 import { STAGES, stageOf, brl, dateShort, fold } from '../../fin/format.js';
 import { isMissingInDb } from '../../fin/db.js';
-import { fetchClients, subscribeClients } from '../../fin/clients.js';
+import { fetchClients, subscribeClients, isInternal } from '../../fin/clients.js';
 import { fetchOperationTypes } from '../../fin/refs.js';
 
 let ctx = null; // estado da página montada (null fora da seção)
@@ -79,7 +79,7 @@ async function load(c) {
   try {
     const [clients, types] = await Promise.all([fetchClients(), fetchOperationTypes()]);
     if (ctx !== c) return;
-    c.clients = clients;
+    c.clients = clients.filter((x) => !isInternal(x));
     c.types = types;
   } catch (e) {
     if (ctx !== c) return;
@@ -119,7 +119,9 @@ function removeLocal(c, id) {
 
 function onRealtime(c, payload) {
   if (ctx !== c || c.loading) return;
-  const changed = payload.eventType === 'DELETE' ? removeLocal(c, payload.old?.id) : upsertLocal(c, payload.new);
+  // cliente que virou entidade interna (ou evento de uma delas) sai da lista
+  const gone = payload.eventType === 'DELETE' || isInternal(payload.new);
+  const changed = gone ? removeLocal(c, (payload.new?.id || payload.old?.id)) : upsertLocal(c, payload.new);
   if (!changed) return;
   renderStats(c);
   renderBody(c);
@@ -135,13 +137,11 @@ function filtered(c) {
 }
 
 const typeOf = (c, id) => c.types.find((t) => t.id === id) || null;
-const allTags = (c) => [...new Set(c.clients.flatMap((x) => x.tags || []))];
 
 function openForm(c, client) {
   openClientForm({
     client,
     types: c.types,
-    tagSuggestions: allTags(c),
     onSaved: (row) => { if (ctx === c && upsertLocal(c, row)) { renderStats(c); renderBody(c); } },
     onDeleted: (id) => { if (ctx === c && removeLocal(c, id)) { renderStats(c); renderBody(c); } },
   });
@@ -223,7 +223,7 @@ function renderBody(c) {
           const owner = profileOf(x.owner_id);
           return `
           <tr data-client-id="${x.id}" tabindex="0">
-            <td><div class="cell-main">${clientLogoHtml(x)}<span class="cell-main__text"><span class="truncate">${esc(x.name)}</span><span class="cell-tags ${(x.tags || []).length ? '' : 'cell-tags--sm-only'}"><span class="show-sm">${chipHtml(stage.label, stage.color, { small: true })}</span>${tagChipsHtml(x.tags)}</span></span></div></td>
+            <td><div class="cell-main">${clientAvatarHtml(x)}<span class="cell-main__text"><span class="truncate">${esc(x.name)}</span><span class="cell-tags cell-tags--sm-only"><span class="show-sm">${chipHtml(stage.label, stage.color, { small: true })}</span></span></span></div></td>
             <td class="hide-sm">${x.contact ? `<div class="truncate">${esc(x.contact)}</div>${x.contact_role ? `<div class="subtle truncate">${esc(x.contact_role)}</div>` : ''}` : '<span class="subtle">—</span>'}</td>
             <td class="hide-sm">${chipHtml(stage.label, stage.color)}</td>
             <td class="hide-sm">${type ? chipHtml(type.name, type.color) : '<span class="subtle">—</span>'}</td>

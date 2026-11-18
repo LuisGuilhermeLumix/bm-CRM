@@ -19,6 +19,19 @@ export function avatarHtml(profile, size = '') {
   return `<span class="${cls}" title="${esc(profile.name)}">${esc(initials(profile.name))}</span>`;
 }
 
+/**
+ * Logo de um cliente ou entidade interna: a imagem (logo_url) ou, sem ela, a
+ * inicial do nome sobre logo_bg. size: '' (28px) | 'lg' (36px) | 'xl' (56px).
+ */
+export function clientAvatarHtml(client, size = '') {
+  const cls = `client-logo ${size ? 'client-logo--' + size : ''}`;
+  const bg = esc(client?.logo_bg || '#8b6cf6');
+  if (client?.logo_url) {
+    return `<span class="${cls} client-logo--img" style="--c:${bg}"><img src="${esc(client.logo_url)}" alt="" loading="lazy" /></span>`;
+  }
+  return `<span class="${cls}" style="--c:${bg}">${esc(initials(client?.name || '?').slice(0, 1))}</span>`;
+}
+
 export function emptyHtml({ icon: ic = 'inbox', title = '', text = '', action = '', small = false }) {
   return `<div class="empty ${small ? 'empty--sm' : ''}">
     ${icon(ic)}

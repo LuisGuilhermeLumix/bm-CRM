@@ -179,4 +179,5 @@ supabase/migrations/010_fin_schema.sql          tabelas do Financeiro (fin_*)
 supabase/migrations/011_fin_config.sql          liberar/bloquear usuário pelo app + fin_settings
 supabase/migrations/012_profile_emails.sql      e-mail dos usuários em Configurações (crm_profile_emails)
 supabase/migrations/013_fin_recurring.sql       Financeiro: fin_totals, fin_filter_options, recorrência + pg_cron
+supabase/migrations/014_fin_adjustments.sql     logo de cliente (logo_url) + entidades internas (is_internal)
 ```

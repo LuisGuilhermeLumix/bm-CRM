@@ -1,14 +1,17 @@
-// Seção Configurações (#/config/<aba>): Usuários, Categorias e
-// Tipos de operação + sócios + regras de distribuição + reinvestimento/reserva.
+// Seção Configurações (#/config/<aba>): Usuários, Categorias,
+// Tipos de operação + sócios + regras de distribuição + reinvestimento/reserva,
+// e Empresa (as entidades internas Lumix e Lumix REC).
 import { icon, refreshIcons } from '../icons.js';
 import { esc, nextPaletteColor } from '../../utils.js';
 import { state, on } from '../../state.js';
 import { setSubRoute } from '../../router.js';
-import { avatarHtml, chipHtml, emptyHtml } from '../common.js';
+import { avatarHtml, chipHtml, clientAvatarHtml, emptyHtml } from '../common.js';
+import { logoFileInputHtml, bindLogoUpload } from '../logoUpload.js';
 import { openDialog, confirmDialog, promptDialog } from '../dialog.js';
 import { openColorPopover } from '../colorPicker.js';
 import { toastError, toastSuccess } from '../toast.js';
 import { isMissingInDb } from '../../fin/db.js';
+import { fetchClients, updateClient, internalEntities } from '../../fin/clients.js';
 import {
   CATEGORY_KINDS, fetchCategories, createCategory, renameCategory, deleteCategory, categoryUsage,
   fetchOperationTypes, createOperationType, updateOperationType,
@@ -20,6 +23,7 @@ const TABS = [
   { id: 'usuarios',   label: 'Usuários',                   icon: 'user-check' },
   { id: 'categorias', label: 'Categorias',                 icon: 'tags' },
   { id: 'operacoes',  label: 'Tipos de operação e regras', icon: 'chart-pie' },
+  { id: 'empresa',    label: 'Empresa',                    icon: 'building-2' },
 ];
 
 let ctx = null;
@@ -55,6 +59,7 @@ function showTab(c, tab, updateUrl = true) {
   host.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => { if (b.dataset.tab !== c.tab) showTab(c, b.dataset.tab); }));
   if (tab === 'usuarios') { renderUsers(c); loadEmails(c); }
   else if (tab === 'categorias') loadCategories(c);
+  else if (tab === 'empresa') loadCompany(c);
   else loadOperations(c);
   refreshIcons();
 }
@@ -504,5 +509,118 @@ function renderRules(c) {
       toastError(e);
       saveBtn.disabled = false;
     }
+  });
+}
+
+// ============================================================================
+// EMPRESA — entidades internas (fin_clients.is_internal)
+// Só edita nome, logo e tipo de operação. Não cria nem exclui: são as duas do
+// seed da migration 014; para mais uma, é no SQL.
+// ============================================================================
+async function loadCompany(c) {
+  const seq = c.seq;
+  setLoading(c, 'Carregando a empresa…');
+  try {
+    const [clients, types] = await Promise.all([fetchClients(), fetchOperationTypes()]);
+    if (ctx !== c || seq !== c.seq) return;
+    c.entities = internalEntities(clients);
+    c.entityTypes = types;
+    c.entitiesNoColumn = clients.length > 0 && !('is_internal' in clients[0]); // migration 014 não aplicada
+    renderCompany(c);
+  } catch (e) {
+    if (ctx !== c || seq !== c.seq) return;
+    setError(c, e, () => loadCompany(c));
+  }
+}
+
+function renderCompany(c) {
+  const alive = () => ctx === c && c.tab === 'empresa';
+  const typeName = (id) => c.entityTypes.find((t) => t.id === id)?.name;
+  const effect = (e) => (e.operation_type_id
+    ? `As despesas lançadas aqui entram direto no lucro de <b>${esc(typeName(e.operation_type_id) || 'um tipo')}</b>.`
+    : 'As despesas lançadas aqui são custo geral: rateadas entre os tipos de operação, proporcional à receita paga de cada um no mês.');
+
+  if (!c.entities.length) {
+    body(c).innerHTML = `
+      <section class="panel">
+        <header class="panel__head"><div><h2>Empresa</h2></div></header>
+        <div class="info-box info-box--warn">${icon('triangle-alert')}<span>${c.entitiesNoColumn
+          ? 'Falta aplicar a migration 014_fin_adjustments.sql no banco: é ela que cria as entidades Lumix e Lumix REC.'
+          : 'Nenhuma entidade interna cadastrada. A migration 014_fin_adjustments.sql cria Lumix e Lumix REC.'}</span></div>
+      </section>`;
+    refreshIcons();
+    return;
+  }
+
+  body(c).innerHTML = `
+    <section class="panel">
+      <header class="panel__head">
+        <div>
+          <h2>Empresa</h2>
+          <p class="hint">Os custos da própria Lumix são lançados nestas entidades, não em clientes. Elas não aparecem na tela Clientes; nos lançamentos, ficam no topo da lista "Empresa / cliente".</p>
+        </div>
+      </header>
+      <div class="entity-list">
+        ${c.entities.map((e) => `
+          <div class="entity" data-entity="${e.id}">
+            <div class="entity__logo">
+              <button type="button" class="logo-btn" data-logo title="Enviar logo (PNG, JPG, WebP ou SVG, até 2 MB)">${clientAvatarHtml(e, 'xl')}</button>
+              ${logoFileInputHtml('data-file')}
+            </div>
+            <div class="entity__fields">
+              <div class="form-row">
+                <div class="form-field">
+                  <label for="enName-${e.id}">Nome</label>
+                  <input class="input" id="enName-${e.id}" data-name value="${esc(e.name)}" autocomplete="off" />
+                </div>
+                <div class="form-field">
+                  <label for="enType-${e.id}">Tipo de operação</label>
+                  <select class="select" id="enType-${e.id}" data-type>
+                    <option value="" ${e.operation_type_id ? '' : 'selected'}>Custo geral — rateado</option>
+                    ${c.entityTypes.filter((t) => t.active || t.id === e.operation_type_id).map((t) => `<option value="${t.id}" ${t.id === e.operation_type_id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
+                  </select>
+                </div>
+              </div>
+              <p class="hint" data-effect>${effect(e)}</p>
+              <div class="logo-actions">
+                <button type="button" class="btn btn--sm" data-pick>${icon('image-plus', 'ico--sm')} ${e.logo_url ? 'Trocar logo' : 'Enviar logo'}</button>
+                ${e.logo_url ? `<button type="button" class="btn btn--ghost btn--sm" data-remove>${icon('trash', 'ico--sm')} Remover logo</button>` : ''}
+              </div>
+            </div>
+          </div>`).join('')}
+      </div>
+    </section>`;
+  refreshIcons();
+
+  body(c).querySelectorAll('[data-entity]').forEach((card) => {
+    const find = () => c.entities.find((x) => x.id === card.dataset.entity);
+    const apply = (row) => { Object.assign(find(), row); if (alive()) renderCompany(c); };
+
+    bindInlineInput(card.querySelector('[data-name]'), () => find()?.name, async (name) => {
+      if (!name) throw new Error('O nome não pode ficar vazio.');
+      Object.assign(find(), await updateClient(find().id, { name }));
+      toastSuccess('Nome salvo.');
+    });
+
+    card.querySelector('[data-type]').addEventListener('change', async (ev) => {
+      const sel = ev.currentTarget;
+      sel.disabled = true;
+      try {
+        apply(await updateClient(find().id, { operation_type_id: sel.value || null }));
+        toastSuccess('Tipo de operação salvo.');
+      } catch (e) {
+        toastError(e);
+        if (alive()) renderCompany(c);
+      }
+    });
+
+    bindLogoUpload({
+      input: card.querySelector('[data-file]'),
+      triggers: [card.querySelector('[data-logo]'), card.querySelector('[data-pick]')],
+      removeBtn: card.querySelector('[data-remove]'),
+      getClient: find,
+      onChange: apply,
+      setBusy: (b) => card.querySelectorAll('button').forEach((btn) => { btn.disabled = b; }),
+    });
   });
 }

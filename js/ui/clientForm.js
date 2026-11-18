@@ -1,11 +1,13 @@
-// Modal de cliente (criar / editar / excluir). Usado na seção Clientes e,
-// depois, no atalho "Novo cliente" do Dashboard.
+// Modal de cliente (criar / editar / excluir). Usado na seção Clientes e no
+// atalho "Novo cliente" do Dashboard. Entidades internas (Lumix, Lumix REC)
+// não passam por aqui: são editadas em Configurações → Empresa.
 import { icon, refreshIcons } from './icons.js';
-import { esc, initials, autoResize } from '../utils.js';
+import { esc, autoResize } from '../utils.js';
 import { state } from '../state.js';
 import { openDialog, confirmDialog } from './dialog.js';
 import { openColorPopover } from './colorPicker.js';
-import { tagsInput } from './tagsInput.js';
+import { clientAvatarHtml } from './common.js';
+import { logoFileInputHtml, bindLogoUpload } from './logoUpload.js';
 import { moneyInputHtml, bindMoneyInput, moneyValue } from './moneyInput.js';
 import { toastError, toastSuccess } from './toast.js';
 import { STAGES, stageOf } from '../fin/format.js';
@@ -14,18 +16,16 @@ import { createClient, updateClient, deleteClient, clientLinks } from '../fin/cl
 const DEFAULT_LOGO = '#8b6cf6';
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
-export function clientLogoHtml(client, size = '') {
-  return `<span class="client-logo ${size ? 'client-logo--' + size : ''}" style="--c:${esc(client?.logo_bg || DEFAULT_LOGO)}">${esc(initials(client?.name || '?').slice(0, 1))}</span>`;
-}
-
 /**
- * openClientForm({ client, types, tagSuggestions, onSaved, onDeleted })
+ * openClientForm({ client, types, onSaved, onDeleted })
  * client = null cria um novo. types = fin_operation_types já carregados.
+ * onSaved também é chamado quando só a logo muda (o modal continua aberto).
  */
-export function openClientForm({ client = null, types = [], tagSuggestions = [], onSaved, onDeleted } = {}) {
+export function openClientForm({ client = null, types = [], onSaved, onDeleted } = {}) {
   const isNew = !client;
-  const c = client || { stage: 'lead', logo_bg: DEFAULT_LOGO, tags: [], mrr: 0 };
-  let logoBg = c.logo_bg || DEFAULT_LOGO;
+  // cópia local: a logo e a cor mudam antes do "Salvar"
+  const c = { stage: 'lead', logo_bg: DEFAULT_LOGO, mrr: 0, ...(client || {}) };
+  c.logo_bg = c.logo_bg || DEFAULT_LOGO;
 
   // tipos ativos + o tipo atual do cliente, mesmo que esteja oculto
   const typeOptions = types.filter((t) => t.active || t.id === c.operation_type_id);
@@ -42,20 +42,33 @@ export function openClientForm({ client = null, types = [], tagSuggestions = [],
       <div class="form-row form-row--logo">
         <div class="form-field form-field--fit">
           <label>Logo</label>
-          <button type="button" class="client-logo client-logo--lg client-logo--btn" id="cfLogo" style="--c:${esc(logoBg)}" title="Cor do logo"></button>
+          <button type="button" class="logo-btn" id="cfLogo" ${isNew ? 'disabled' : ''} title="${isNew ? 'Salve o cliente para adicionar a logo' : 'Enviar logo (PNG, JPG, WebP ou SVG, até 2 MB)'}"></button>
+          ${logoFileInputHtml('id="cfLogoFile"')}
         </div>
         <div class="form-field">
           <label for="cfName">Nome</label>
           <input class="input" id="cfName" value="${esc(c.name || '')}" placeholder="Nome do cliente" autocomplete="off" />
         </div>
       </div>
+      <div class="logo-actions">
+        ${isNew ? `<span class="hint">Salve para adicionar a logo.</span>` : `
+          <button type="button" class="btn btn--sm" id="cfLogoPick">${icon('image-plus', 'ico--sm')} <span id="cfLogoPickText"></span></button>
+          <button type="button" class="btn btn--ghost btn--sm" id="cfLogoRemove">${icon('trash', 'ico--sm')} Remover logo</button>`}
+        <span class="logo-actions__color">
+          <button type="button" class="color-btn color-btn--sm" id="cfColor" style="--c:${esc(c.logo_bg)}" title="Cor de fundo da logo"></button>
+          <span class="hint">Cor de fundo</span>
+        </span>
+      </div>
       <div class="form-row">
         <div class="form-field"><label for="cfContact">Contato</label><input class="input" id="cfContact" value="${esc(c.contact || '')}" placeholder="Nome da pessoa" autocomplete="off" /></div>
         <div class="form-field"><label for="cfRole">Cargo</label><input class="input" id="cfRole" value="${esc(c.contact_role || '')}" autocomplete="off" /></div>
       </div>
       <div class="form-row">
-        <div class="form-field"><label for="cfEmail">E-mail</label><input class="input" id="cfEmail" type="email" value="${esc(c.email || '')}" autocomplete="off" /></div>
         <div class="form-field"><label for="cfPhone">Telefone</label><input class="input" id="cfPhone" type="tel" value="${esc(c.phone || '')}" autocomplete="off" /></div>
+        <div class="form-field">
+          <label for="cfOwner">Responsável</label>
+          <select class="select" id="cfOwner">${opt('', 'Sem responsável', !c.owner_id)}${owners.map((p) => opt(p.id, p.name, p.id === c.owner_id)).join('')}</select>
+        </div>
       </div>
       <div class="form-row">
         <div class="form-field">
@@ -71,11 +84,6 @@ export function openClientForm({ client = null, types = [], tagSuggestions = [],
         <div class="form-field"><label for="cfMrr">MRR (receita mensal)</label>${moneyInputHtml({ id: 'cfMrr', value: c.mrr, label: 'MRR em reais' })}</div>
         <div class="form-field"><label for="cfSince">Cliente desde</label><input class="input" id="cfSince" type="date" value="${esc(c.since || '')}" /></div>
       </div>
-      <div class="form-field">
-        <label for="cfOwner">Responsável</label>
-        <select class="select" id="cfOwner">${opt('', 'Sem responsável', !c.owner_id)}${owners.map((p) => opt(p.id, p.name, p.id === c.owner_id)).join('')}</select>
-      </div>
-      <div class="form-field"><label>Tags</label><div id="cfTags"></div></div>
       <div class="form-field"><label for="cfNotes">Observações</label><textarea class="textarea" id="cfNotes" rows="2">${esc(c.notes || '')}</textarea></div>`,
     actions: [
       ...(isNew ? [] : [{ label: `${icon('trash-2')} Excluir`, cls: 'btn--danger-ghost dialog__left', onClick: () => { remove(); return false; } }]),
@@ -89,31 +97,45 @@ export function openClientForm({ client = null, types = [], tagSuggestions = [],
   const nameInput = $('cfName');
   const logoBtn = $('cfLogo');
   const saveBtn = root.querySelector('.dialog__actions .btn--primary');
-  const tags = tagsInput({ value: c.tags, suggestions: tagSuggestions });
-  $('cfTags').appendChild(tags.el);
   bindMoneyInput($('cfMrr'));
   const notes = $('cfNotes');
   notes.addEventListener('input', () => autoResize(notes));
   setTimeout(() => autoResize(notes), 0);
 
   const paintLogo = () => {
-    logoBtn.style.setProperty('--c', logoBg);
-    logoBtn.textContent = initials(nameInput.value.trim() || '?').slice(0, 1);
+    logoBtn.innerHTML = clientAvatarHtml({ ...c, name: nameInput.value.trim() || '?' }, 'lg');
+    $('cfColor').style.setProperty('--c', c.logo_bg);
+    if (!isNew) {
+      $('cfLogoPickText').textContent = c.logo_url ? 'Trocar logo' : 'Enviar logo';
+      $('cfLogoRemove').classList.toggle('hidden', !c.logo_url);
+    }
   };
   paintLogo();
   nameInput.addEventListener('input', paintLogo);
-  logoBtn.addEventListener('click', () => openColorPopover(logoBtn, logoBg, (hex) => { logoBg = hex; paintLogo(); }));
-  root.querySelectorAll('input:not(.tags-input__field)').forEach((inp) => inp.addEventListener('keydown', (e) => {
+  $('cfColor').addEventListener('click', (e) => openColorPopover(e.currentTarget, c.logo_bg, (hex) => { c.logo_bg = hex; paintLogo(); }));
+  root.querySelectorAll('input:not([type="file"])').forEach((inp) => inp.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); save(); }
   }));
 
   let busy = false;
-  const setBusy = (b) => {
+  const setBusy = (b, label = 'Salvando…') => {
     busy = b;
-    root.querySelectorAll('.dialog__actions .btn').forEach((btn) => { btn.disabled = b; });
-    saveBtn.innerHTML = b ? `${icon('loader-circle', 'spin')} Salvando…` : 'Salvar';
+    root.querySelectorAll('.dialog__actions .btn, .logo-actions .btn, #cfLogo').forEach((btn) => { btn.disabled = b || (isNew && btn.id === 'cfLogo'); });
+    saveBtn.innerHTML = b ? `${icon('loader-circle', 'spin')} ${label}` : 'Salvar';
     refreshIcons();
   };
+
+  if (!isNew) {
+    bindLogoUpload({
+      input: $('cfLogoFile'),
+      triggers: [logoBtn, $('cfLogoPick')],
+      removeBtn: $('cfLogoRemove'),
+      getClient: () => c,
+      setBusy: (b) => setBusy(b, 'Enviando…'),
+      // a logo é gravada na hora; o resto do formulário continua em edição
+      onChange: (row) => { c.logo_url = row.logo_url; paintLogo(); onSaved?.(row); },
+    });
+  }
 
   async function save() {
     if (busy) return;
@@ -124,19 +146,17 @@ export function openClientForm({ client = null, types = [], tagSuggestions = [],
       name,
       contact: $('cfContact').value.trim() || null,
       contact_role: $('cfRole').value.trim() || null,
-      email: $('cfEmail').value.trim() || null,
       phone: $('cfPhone').value.trim() || null,
       stage,
       operation_type_id: $('cfType').value || null,
       mrr: moneyValue($('cfMrr')),
       since: $('cfSince').value || null,
       owner_id: $('cfOwner').value || null,
-      logo_bg: logoBg,
-      tags: tags.get(),
+      logo_bg: c.logo_bg,
       notes: notes.value.trim() || null,
     };
     // `status` é o rótulo legado do sistema antigo: acompanha o estágio quando ele muda
-    if (isNew || stage !== c.stage) data.status = stageOf(stage).label;
+    if (isNew || stage !== client.stage) data.status = stageOf(stage).label;
     setBusy(true);
     try {
       const row = isNew ? await createClient(data) : await updateClient(c.id, data);
@@ -182,7 +202,7 @@ export function openClientForm({ client = null, types = [], tagSuggestions = [],
     if (!ok) return;
     setBusy(true);
     try {
-      await deleteClient(c.id);
+      await deleteClient(c.id); // apaga também a logo do bucket
       dlg.close('deleted');
       toastSuccess('Cliente excluído.');
       onDeleted?.(c.id);

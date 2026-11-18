@@ -2,7 +2,6 @@
 // Lista paginada no banco, totais por RPC (fin_totals) e realtime.
 import { sb, run, friendlyError, AppError } from '../supabase.js';
 import { withMigrationHint } from './db.js';
-import { todayYmd } from './format.js';
 import { fetchClients } from './clients.js';
 import { fetchCategories } from './refs.js';
 
@@ -94,9 +93,9 @@ export function deleteEntry(kind, id) {
   return run(sb.from(KINDS[kind].table).delete().eq('id', id));
 }
 
-/** "Marcar pago": status Pago e pagamento = hoje. */
+/** "Marcar pago": só muda o status. A Data (due_date) fica como está e paid_date não é usada. */
 export function markPaid(kind, id) {
-  return updateEntry(kind, id, { status: 'Pago', paid_date: todayYmd() });
+  return updateEntry(kind, id, { status: 'Pago' });
 }
 
 /** Realtime de receitas e despesas. Devolve a função que desinscreve. */
