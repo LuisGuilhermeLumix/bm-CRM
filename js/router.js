@@ -1,4 +1,4 @@
-// Roteamento por hash: #/boards/<id>, #/dashboard, #/clientes, #/financeiro…
+// Roteamento por hash: #/boards/<id>, #/dashboard, #/clientes, #/config/<aba>…
 // A URL é a fonte da verdade da seção aberta. Links da sidebar são <a href>
 // comuns (o navegador dispara `hashchange`); o board aberto é sincronizado na
 // URL por syncBoardRoute(), chamado de openBoard/closeBoard.
@@ -22,18 +22,39 @@ export const SECTIONS = [
 
 export const getSection = (id) => SECTIONS.find((s) => s.id === id) || null;
 
-/** "#/boards/<id>" → { section, boardId }. Devolve null se não for uma rota válida. */
+/**
+ * "#/boards/<id>" → { section, boardId, sub }. Nas outras seções o segundo
+ * segmento é uma sub-rota opcional (ex.: a aba em "#/config/categorias").
+ * Devolve null se não for uma rota válida.
+ */
 export function parseHash(hash = location.hash) {
   const m = /^#\/([a-z]+)(?:\/([^/?#]+))?\/?$/.exec(hash || '');
   if (!m || !getSection(m[1])) return null;
-  if (m[1] === 'boards') return { section: 'boards', boardId: m[2] ? decodeURIComponent(m[2]) : null };
-  if (m[2]) return null;
-  return { section: m[1], boardId: null };
+  const second = m[2] ? decodeURIComponent(m[2]) : null;
+  if (m[1] === 'boards') return { section: 'boards', boardId: second, sub: null };
+  return { section: m[1], boardId: null, sub: second };
 }
 
 export function routeHash(route) {
   if (route.section === 'boards') return route.boardId ? `#/boards/${encodeURIComponent(route.boardId)}` : '#/boards';
-  return `#/${route.section}`;
+  return route.sub ? `#/${route.section}/${encodeURIComponent(route.sub)}` : `#/${route.section}`;
+}
+
+/** Vai para outra rota (entra no histórico e passa pelo fluxo normal de troca de seção). */
+export function navigate(hash) {
+  if (location.hash !== hash) location.hash = hash;
+}
+
+/**
+ * Troca só a sub-rota da seção atual (ex.: a aba aberta), sem remontar a
+ * página e sem empilhar histórico.
+ */
+export function setSubRoute(sub) {
+  if (state.route.section === 'boards') return;
+  const route = { ...state.route, sub: sub || null };
+  writeHash(routeHash(route), true);
+  state.route = route;
+  storage.set(LAST_ROUTE_KEY, routeHash(route));
 }
 
 /** Troca o hash sem disparar `hashchange` (pushState/replaceState não disparam). */
@@ -66,7 +87,7 @@ export const isRouterActive = () => !!handler;
 
 export function stopRouter() {
   handler = null;
-  state.route = { section: 'boards', boardId: null };
+  state.route = { section: 'boards', boardId: null, sub: null };
 }
 
 function resolve(fromBrowser) {
@@ -76,7 +97,7 @@ function resolve(fromBrowser) {
     // Rota escrita errado ("#/xyz") cai em Boards. Sem rota nenhuma (URL limpa,
     // ou sobra do link de autenticação) volta para a última rota usada.
     const typedRoute = location.hash.startsWith('#/');
-    route = (!typedRoute && parseHash(storage.get(LAST_ROUTE_KEY) || '')) || { section: 'boards', boardId: null };
+    route = (!typedRoute && parseHash(storage.get(LAST_ROUTE_KEY) || '')) || { section: 'boards', boardId: null, sub: null };
     writeHash(routeHash(route), true);
   }
   state.route = route;
@@ -95,7 +116,7 @@ export function syncBoardRoute(boardId) {
   const cur = parseHash();
   const fromBoard = cur?.section === 'boards' && cur.boardId && cur.boardId !== boardId
     && state.boards.some((b) => b.id === cur.boardId);
-  const route = { section: 'boards', boardId: boardId || null };
+  const route = { section: 'boards', boardId: boardId || null, sub: null };
   writeHash(routeHash(route), !(boardId && fromBoard));
   state.route = route;
   storage.set(LAST_ROUTE_KEY, routeHash(route));

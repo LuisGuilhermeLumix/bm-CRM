@@ -360,6 +360,112 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: po
 /* ---------- Seções (fora de Boards) ---------- */
 .page { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: var(--sp-6); }
 .page-placeholder { flex: 1; display: flex; align-items: center; justify-content: center; }
+.page__inner { width: 100%; max-width: 1320px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--sp-4); flex-shrink: 0; }
+.page__inner--narrow { max-width: 980px; }
+.page__inner--fill { height: 100%; flex-shrink: 1; min-height: 480px; } /* pipeline ocupa a altura que sobra */
+.page__body { min-width: 0; }
+.page__body--fill { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.page-state { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--text-2); padding: var(--sp-8) var(--sp-4); }
+
+/* Indicadores (número grande + rótulo). O número usa a cor de texto, nunca cor de série. */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--sp-3); }
+.stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.stat__label { display: flex; align-items: center; gap: 6px; color: var(--text-2); font-size: var(--fs-sm); font-weight: var(--fw-medium); }
+.stat__label .ico { width: 14px; height: 14px; color: var(--text-3); }
+.stat__value { font-size: var(--fs-2xl); font-weight: var(--fw-semibold); line-height: 1.2; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat__hint { font-size: var(--fs-xs); color: var(--text-3); }
+
+/* Barra de filtros e ações de uma seção */
+.toolbar { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.toolbar__spacer { flex: 1; }
+.toolbar__select { width: auto; min-width: 170px; }
+.filter-search { position: relative; flex: 1 1 240px; max-width: 320px; display: block; }
+.filter-search .ico { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
+.filter-search .input { padding-left: 32px; }
+.segmented { display: inline-flex; padding: 2px; gap: 2px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--surface-2); }
+.segmented button {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 8px;
+  color: var(--text-2); font-weight: var(--fw-medium); transition: background var(--transition), color var(--transition);
+}
+.segmented button:hover { color: var(--text); }
+.segmented button.is-active { background: var(--surface-active); color: var(--text); }
+
+/* Tabelas */
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.table { width: 100%; border-collapse: collapse; }
+.table th {
+  text-align: left; padding: 10px 14px; font-size: var(--fs-xs); font-weight: var(--fw-semibold); letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--text-3); border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.table td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; max-width: 280px; }
+.table tbody tr:last-child td { border-bottom: none; }
+.table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.table--clickable tbody tr { cursor: pointer; transition: background var(--transition); }
+.table--clickable tbody tr:hover { background: var(--surface-hover); }
+.table--clickable tbody tr:focus-visible { outline-offset: -2px; }
+.table tr.is-off td:first-child, .settings-row.is-off .input--invisible { color: var(--text-3); }
+.cell-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.cell-main__text { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-weight: var(--fw-medium); }
+.cell-tags { display: flex; flex-wrap: wrap; gap: 3px; }
+.cell-tags--sm-only, .show-sm { display: none; }
+#opRules { display: flex; flex-direction: column; gap: var(--sp-3); }
+.th-dot { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.pct-input { display: inline-flex; align-items: center; gap: 4px; color: var(--text-3); }
+.pct-input .input { width: 68px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Logo do cliente: inicial sobre a cor escolhida */
+.client-logo {
+  width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0; background: var(--c, var(--accent));
+  color: var(--on-accent); font-weight: var(--fw-semibold); font-size: var(--fs-sm); text-transform: uppercase;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.client-logo--lg { width: 36px; height: 36px; border-radius: 10px; font-size: var(--fs-md); }
+.client-logo--btn { border: 1px solid var(--border-strong); transition: transform var(--transition); }
+.client-logo--btn:hover { transform: scale(1.06); }
+.form-row--logo { align-items: flex-end; }
+.form-row--end { align-items: flex-end; }
+.form-row--end > .btn { flex: 0 0 auto; }
+.form-field--fit { flex: 0 0 auto; }
+
+/* Pipeline de clientes: reaproveita .kanban / .column / .card do board */
+.kanban--pipeline { padding: 0 0 4px; }
+.kanban--pipeline .column__header { cursor: default; padding-bottom: 2px; }
+.column__sub { font-size: var(--fs-xs); color: var(--text-3); padding: 0 14px 8px 32px; font-variant-numeric: tabular-nums; }
+.card__amount { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* Campo de tags livres */
+.tags-input {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 36px; padding: 5px 8px; cursor: text;
+  border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--input-bg);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.tags-input:focus-within { border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--accent-ring); }
+.tags-input__chips { display: contents; }
+.tags-input__field { flex: 1 1 110px; min-width: 90px; border: none; background: transparent; outline: none; padding: 2px; }
+
+/* Campo de valor em reais */
+.money { position: relative; }
+.money__prefix { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
+.money .input { padding-left: 34px; font-variant-numeric: tabular-nums; }
+
+/* Configurações: abas de página, painéis e linhas */
+.tabs--page { padding: 0; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+#cfgBody { display: flex; flex-direction: column; gap: var(--sp-4); }
+.panel__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); }
+.panel__head h2 { font-size: var(--fs-md); }
+.panel__head .hint { margin-top: 4px; max-width: 640px; }
+.panel__meta { font-size: var(--fs-sm); color: var(--text-3); white-space: nowrap; }
+.panel__foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-2); }
+.panel__foot .hint { margin-right: auto; }
+.panel-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--sp-4); align-items: start; }
+.add-row { display: flex; gap: var(--sp-2); }
+.add-row .input { flex: 1; min-width: 0; }
+.settings-row--user { padding: 8px 12px; gap: 12px; }
+.settings-row__grow { flex: 1 1 140px; }
+.settings-row__pix { flex: 1 1 180px; max-width: 280px; }
+.toggle__text { font-size: var(--fs-sm); color: var(--text-2); }
+.toggle input:disabled + .toggle__track { opacity: 0.5; }
 
 /* ---------- Card ---------- */
 .card {
@@ -414,6 +520,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: po
   animation: pop-in 150ms ease;
 }
 .dialog--md { max-width: 560px; }
+.dialog--lg { max-width: 640px; }
+.dialog__left { margin-right: auto; }
 .dialog__title { font-size: var(--fs-lg); display: flex; align-items: center; gap: 8px; }
 .dialog__title .ico { color: var(--danger); width: 20px; height: 20px; }
 .dialog__body { color: var(--text-2); display: flex; flex-direction: column; gap: 12px; }
@@ -655,6 +763,23 @@ kbd { font-family: inherit; font-size: var(--fs-xs); border: 1px solid var(--bor
   .shell.sidebar-collapsed .btn-new-board span { display: initial; }
   .shell.sidebar-collapsed .nav-item { justify-content: flex-start; padding: 8px 10px; }
   .page { padding: var(--sp-4); }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat { padding: 12px; }
+  .stat__value { font-size: var(--fs-xl); }
+  .filter-search { flex: 1 1 100%; max-width: none; }
+  .toolbar__select { flex: 1 1 calc(50% - 4px); min-width: 0; }
+  .show-sm { display: inline-flex; }
+  .cell-tags--sm-only { display: flex; }
+  .table td { max-width: 56vw; }
+  .pct-input .input { width: 56px; }
+  .toolbar__spacer { display: none; }
+  .toolbar > .btn--primary { flex: 1; }
+  .hide-sm { display: none; }
+  .table th, .table td { padding: 10px; }
+  .page__inner--fill { min-height: 560px; }
+  .settings-row--partner { flex-wrap: wrap; }
+  .settings-row__pix { max-width: none; flex-basis: 100%; order: 5; }
+  .panel__head { flex-wrap: wrap; }
   .shell.sidebar-collapsed .board-item__main { justify-content: flex-start; padding: 8px 4px 8px 10px; }
   .shell.sidebar-collapsed .board-item__more { display: inline-flex; }
   .board-item__more { opacity: 1; }
@@ -831,7 +956,8 @@ html.theme-switching .card-modal, html.theme-switching .card-modal__head, html.t
 html.theme-switching .dialog, html.theme-switching .popover, html.theme-switching .settings,
 html.theme-switching .login, html.theme-switching .login__card,
 html.theme-switching .btn, html.theme-switching .input, html.theme-switching .textarea, html.theme-switching .select,
-html.theme-switching .board-item, html.theme-switching .nav-item, html.theme-switching .chip {
+html.theme-switching .board-item, html.theme-switching .nav-item, html.theme-switching .chip,
+html.theme-switching .stat, html.theme-switching .panel, html.theme-switching .table-wrap, html.theme-switching .tags-input, html.theme-switching .segmented {
   transition: var(--theme-transition) !important;
 }
 

@@ -8,7 +8,7 @@ export const state = {
   user: null,
   profile: null,
   profiles: {},          // id -> profile
-  route: { section: 'boards', boardId: null }, // rota atual (ver js/router.js)
+  route: { section: 'boards', boardId: null, sub: null }, // rota atual (ver js/router.js)
   boards: [],
   boardId: null,
   columns: [],

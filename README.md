@@ -157,6 +157,7 @@ js/state.js                  estado em memória + pub/sub
 js/boards.js  columns.js  fields.js  tags.js  cards.js   CRUD
 js/router.js                 seções do app + rotas por hash (#/boards/<id>, #/clientes, …)
 js/realtime.js               assinatura das tabelas do board aberto e da lista de boards
+js/fin/*.js                  dados do Financeiro (tabelas fin_*): clientes, cadastros de apoio, formatação
 js/ui/kanban.js              render do board + drag-and-drop
 js/ui/cardModal.js           modal do card (autosave, tags, atividade)
 js/ui/boardSettings.js       painel Colunas / Campos / Tags / Board
@@ -172,4 +173,8 @@ supabase/migrations/004_profile_avatar.sql     foto de perfil + bucket avatars
 supabase/migrations/005_per_card_fields.sql    campos por card (cards.field_ids)
 supabase/migrations/006_field_status_groups.sql grupos de status por campo (fields.statuses)
 supabase/migrations/007_duplicate_and_move.sql  duplicar card/board, mover card entre boards
+supabase/migrations/008_date_deadline.sql       campo de data como prazo (is_deadline)
+supabase/migrations/009_fork_field.sql          definição de campo por card
+supabase/migrations/010_fin_schema.sql          tabelas do Financeiro (fin_*)
+supabase/migrations/011_fin_config.sql          liberar/bloquear usuário pelo app + fin_settings
 ```

@@ -187,7 +187,7 @@ function applyRoute(route, fromBrowser) {
   pageEl.classList.remove('hidden');
   pageEl.scrollTop = 0;
   currentPage = PAGES[route.section];
-  try { currentPage.mount(pageEl); } catch (e) { console.error(e); toastError(e); }
+  try { currentPage.mount(pageEl, route); } catch (e) { console.error(e); toastError(e); }
   emit('route');
 }
 

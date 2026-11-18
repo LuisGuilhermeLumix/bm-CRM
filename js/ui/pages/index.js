@@ -1,5 +1,5 @@
 // Registro das seções (menos Boards, que é o kanban em #board).
-// Cada módulo exporta mount(container) e unmount().
+// Cada módulo exporta mount(container, route) e unmount().
 import * as dashboard from './dashboard.js';
 import * as clientes from './clientes.js';
 import * as financeiro from './financeiro.js';
