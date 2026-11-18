@@ -475,6 +475,20 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: po
 .chart__table summary:hover { color: var(--text); }
 .chart__table[open] summary { margin-bottom: var(--sp-2); }
 
+/* Recorte de imagem (js/ui/imageCropper.js) */
+.cropper { display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); }
+.cropper__stage { position: relative; width: var(--view); height: var(--view); border-radius: var(--radius); overflow: hidden; background: var(--surface-3); touch-action: none; cursor: grab; user-select: none; }
+.cropper__stage:active { cursor: grabbing; }
+.cropper__stage:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
+.cropper__stage canvas { width: 100%; height: 100%; display: block; }
+/* a máscara é um furo: a sombra enorme escurece tudo em volta */
+.cropper__mask { position: absolute; left: 50%; top: 50%; width: var(--mask); height: var(--mask); transform: translate(-50%, -50%); pointer-events: none; box-shadow: 0 0 0 9999px var(--overlay); }
+.cropper__stage--circle .cropper__mask { border-radius: 50%; }
+.cropper__stage--rounded .cropper__mask { border-radius: 18%; }
+.cropper__controls { display: flex; align-items: center; gap: var(--sp-2); width: min(100%, 360px); color: var(--text-3); }
+.cropper__controls input[type="range"] { flex: 1; accent-color: var(--accent); }
+.cropper__controls .btn { margin-left: var(--sp-2); }
+
 /* Usuários e permissões */
 .perm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--sp-3); }
 .perm-grid.is-disabled { opacity: 0.45; pointer-events: none; }
@@ -1082,7 +1096,7 @@ kbd { font-family: inherit; font-size: var(--fs-xs); border: 1px solid var(--bor
 }
 
 /* ---------- Avatar com foto ---------- */
-.avatar.avatar--img { background: var(--surface-2); overflow: hidden; padding: 0; }
+.avatar.avatar--img { background: var(--surface-2); overflow: hidden; padding: 0; border: none; box-shadow: none; }
 .avatar.avatar--img img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 /* ---------- Editor de perfil ---------- */
@@ -1097,7 +1111,7 @@ kbd { font-family: inherit; font-size: var(--fs-xs); border: 1px solid var(--bor
 }
 .profile-editor__avatar:hover { transform: scale(1.03); }
 .profile-editor__avatar:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
-.profile-editor__avatar.has-img { background: var(--surface-2); }
+.profile-editor__avatar.has-img { background: var(--surface-2); border: none; }
 .profile-editor__avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .profile-editor__avatar-edit {
   position: absolute; right: 2px; bottom: 2px; width: 26px; height: 26px; border-radius: 50%;

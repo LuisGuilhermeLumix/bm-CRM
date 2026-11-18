@@ -3,13 +3,13 @@
 // e Empresa (as entidades internas Lumix e Lumix REC).
 import { icon, refreshIcons } from '../icons.js';
 import { esc, nextPaletteColor } from '../../utils.js';
-import { state, on } from '../../state.js';
+import { state, on, emit } from '../../state.js';
 import { setSubRoute } from '../../router.js';
 import { avatarHtml, chipHtml, clientAvatarHtml, emptyHtml } from '../common.js';
 import { logoFileInputHtml, bindLogoUpload } from '../logoUpload.js';
 import { openUserForm } from '../userForm.js';
 import { openProfileEditor } from '../profileEditor.js';
-import { fetchAllAccess } from '../../fin/users.js';
+import { fetchAllAccess, removeFromCrm } from '../../fin/users.js';
 import { loadProfiles } from '../../auth.js';
 import { openDialog, confirmDialog, promptDialog } from '../dialog.js';
 import { openColorPopover } from '../colorPicker.js';
@@ -141,7 +141,8 @@ function accessSummary(c, u) {
 
 function renderUsers(c) {
   const me = state.user?.id;
-  const users = Object.values(state.profiles).sort((a, b) =>
+  // só quem faz parte do CRM (a policy já filtra; o in_crm explícito vale sem a 020 também)
+  const users = Object.values(state.profiles).filter((u) => u.in_crm !== false || u.id === me).sort((a, b) =>
     (Number(b.allowed === true) - Number(a.allowed === true)) || a.name.localeCompare(b.name, 'pt-BR'));
   const allowedCount = users.filter((u) => u.allowed === true).length;
   const hasRoles = users.some((u) => 'role' in u); // sem a migration 018 não há papel
@@ -171,6 +172,7 @@ function renderUsers(c) {
             </span>
             <button type="button" class="btn btn--sm" data-edit="${u.id}" title="Editar nome e foto">${icon('user-pen', 'ico--sm')}<span class="hide-sm">Editar</span></button>
             ${hasRoles ? `<button type="button" class="btn btn--sm" data-perm="${u.id}">${icon('shield-check', 'ico--sm')}<span class="hide-sm">Permissões</span></button>` : ''}
+            ${u.id !== me ? `<button type="button" class="btn btn--ghost btn--icon btn--sm" data-remove-user="${u.id}" title="Remover do CRM" aria-label="Remover ${esc(u.name)} do CRM">${icon('user-x')}</button>` : ''}
             <label class="toggle" title="${u.id === me ? 'Você não pode bloquear o seu próprio acesso' : ''}">
               <input type="checkbox" data-allow="${u.id}" ${u.allowed === true ? 'checked' : ''} ${u.id === me ? 'disabled' : ''} />
               <span class="toggle__track"></span>
@@ -182,6 +184,26 @@ function renderUsers(c) {
   refreshIcons();
   const reload = async () => { await loadProfiles().catch(() => {}); c.usersLoaded = false; loadEmails(c, true); };
   body(c).querySelector('#usAdd')?.addEventListener('click', () => openUserForm({ types: c.userTypes || [], onSaved: reload }));
+  body(c).querySelectorAll('[data-remove-user]').forEach((b) => b.addEventListener('click', async () => {
+    const u = state.profiles[b.dataset.removeUser];
+    if (!u) return;
+    const ok = await confirmDialog({
+      title: 'Remover do CRM',
+      message: `Tira o acesso de <b>${esc(u.name)}</b> ao Lumix OP. O login continua existindo no Supabase para outros sistemas.`,
+      confirmText: 'Remover',
+    });
+    if (!ok) return;
+    b.disabled = true;
+    try {
+      await removeFromCrm(u.id);
+      delete state.profiles[u.id];
+      emit('profiles');
+      toastSuccess(`${u.name} foi removido do CRM.`);
+    } catch (e) {
+      b.disabled = false;
+      toastError(e);
+    }
+  }));
   body(c).querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => {
     openProfileEditor(b.dataset.edit, { email: c.emails?.[b.dataset.edit] || null });
   }));

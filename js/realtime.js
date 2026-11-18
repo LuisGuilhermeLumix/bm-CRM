@@ -97,6 +97,8 @@ function handle(table, payload) {
       if (eventType === 'DELETE') {
         delete state.profiles[o.id];
         if (state.profile?.id === o.id) state.profile = null;
+      } else if (n.in_crm === false && n.id !== state.user?.id) {
+        delete state.profiles[n.id]; // saiu do CRM
       } else {
         state.profiles[n.id] = n;
         if (state.user?.id === n.id) state.profile = n;

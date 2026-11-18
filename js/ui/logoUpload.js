@@ -3,6 +3,7 @@
 import { esc } from '../utils.js';
 import { confirmDialog } from './dialog.js';
 import { toastError, toastSuccess } from './toast.js';
+import { cropImage } from './imageCropper.js';
 import { LOGO_ACCEPT, uploadClientLogo, removeClientLogo } from '../fin/clients.js';
 
 /** <input type="file"> escondido que o botão da logo dispara. */
@@ -27,9 +28,16 @@ export function bindLogoUpload({ input, triggers = [], removeBtn = null, getClie
     input.value = ''; // permite escolher o mesmo arquivo de novo
     const client = getClient();
     if (!file || !client?.id) return;
+    let upload = file;
+    // SVG é vetor: sobe como está; o resto passa pelo recorte 512×512
+    if (file.type !== 'image/svg+xml') {
+      if (!/^image\/(png|jpeg|webp)$/.test(file.type)) { toastError('Envie uma imagem PNG, JPG, WebP ou SVG.'); return; }
+      try { upload = await cropImage(file, { shape: 'rounded', title: 'Ajustar logo' }); } catch (e) { toastError(e); return; }
+      if (!upload) return; // cancelou
+    }
     setBusy?.(true);
     try {
-      const row = await uploadClientLogo(client.id, file);
+      const row = await uploadClientLogo(client.id, upload);
       toastSuccess('Logo atualizada.');
       onChange(row);
     } catch (e) {

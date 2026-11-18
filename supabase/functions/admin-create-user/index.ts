@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
   const id = created.user.id;
 
   // o trigger handle_new_user cria o profile; garante nome e acesso liberado
-  const { error: profErr } = await admin.from('profiles').upsert({ id, name, allowed: true }, { onConflict: 'id' });
+  const { error: profErr } = await admin.from('profiles').upsert({ id, name, allowed: true, in_crm: true }, { onConflict: 'id' });
   if (profErr) return fail(500, `Usuário criado, mas não deu para liberar o acesso: ${profErr.message}`);
 
   // papel e permissões: chamado como o admin que pediu (crm_set_access confere isso)

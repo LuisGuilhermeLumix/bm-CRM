@@ -7,6 +7,7 @@ import { state, on } from '../state.js';
 import { updateProfile, uploadAvatar, removeAvatar } from '../auth.js';
 import { openDialog, confirmDialog } from './dialog.js';
 import { toastError, toastSuccess } from './toast.js';
+import { cropImage } from './imageCropper.js';
 
 const MAX_BYTES = 2 * 1024 * 1024;
 
@@ -77,11 +78,14 @@ export function openProfileEditor(profileId = state.user?.id, { email = null } =
     const f = file.files?.[0];
     file.value = ''; // permite reescolher o mesmo arquivo
     if (!f) return;
-    if (!f.type.startsWith('image/')) { toastError(new Error('Envie uma imagem (PNG, JPG, GIF, WebP).')); return; }
-    if (f.size > MAX_BYTES) { toastError(new Error('A imagem precisa ter até 2 MB.')); return; }
+    if (!f.type.startsWith('image/') || f.type === 'image/svg+xml') { toastError(new Error('Envie uma imagem (PNG, JPG, GIF, WebP).')); return; }
+    let cropped;
+    try { cropped = await cropImage(f, { shape: 'circle' }); } catch (e) { toastError(e); return; }
+    if (!cropped) return; // cancelou: não sobe nada
+    if (cropped.size > MAX_BYTES) { toastError(new Error('A imagem precisa ter até 2 MB.')); return; }
     setBusy(true);
     try {
-      await uploadAvatar(f, profileId);
+      await uploadAvatar(cropped, profileId);
       toastSuccess('Foto atualizada.');
     } catch (e) {
       toastError(e);

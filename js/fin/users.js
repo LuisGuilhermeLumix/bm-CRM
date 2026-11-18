@@ -45,6 +45,15 @@ export async function createUser({ email, password, name, role, access }) {
   return data;
 }
 
+/** Tira o usuário do CRM (perde o acesso; o login continua no Supabase). Migration 020. */
+export async function removeFromCrm(profileId) {
+  try {
+    await run(sb.rpc('crm_remove_from_crm', { p_id: profileId }));
+  } catch (e) {
+    throw withMigrationHint(e, '020_crm_membership.sql');
+  }
+}
+
 /** Senha aleatória legível (sem caracteres parecidos), 14 caracteres. */
 export function randomPassword(len = 14) {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%*';
