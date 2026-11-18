@@ -50,25 +50,40 @@ export async function loadProfiles() {
   emit('profiles');
 }
 
-export async function updateProfile(patch) {
-  const row = await run(sb.from('profiles').update(patch).eq('id', state.user.id).select().single());
+/**
+ * Atualiza nome/foto de um perfil. O próprio: update direto em profiles.
+ * Outro usuário (só admin): RPC crm_admin_update_profile (migration 019).
+ * patch aceita { name } e/ou { avatar_url } (null = remover a foto).
+ */
+export async function updateProfile(patch, profileId = state.user.id) {
+  let row;
+  if (profileId === state.user.id) {
+    row = await run(sb.from('profiles').update(patch).eq('id', profileId).select().single());
+  } else {
+    row = await run(sb.rpc('crm_admin_update_profile', {
+      p_id: profileId,
+      p_name: 'name' in patch ? patch.name : null,
+      p_avatar_url: patch.avatar_url ?? null,
+      p_clear_avatar: 'avatar_url' in patch && patch.avatar_url === null,
+    }));
+  }
   state.profiles[row.id] = row;
-  state.profile = row;
+  if (row.id === state.user?.id) state.profile = row;
   emit('profiles');
   return row;
 }
 
 /**
- * Faz upload da foto do usuário logado para o bucket "avatars" em
- * <user_id>/avatar.<ext>. Antes, apaga tudo que já tinha na pasta (evita
+ * Faz upload da foto de um usuário (o logado, ou outro se for admin) para o
+ * bucket "avatars" em <user_id>/avatar.<ext>. Antes, apaga tudo que já tinha na pasta (evita
  * sobras com extensão diferente). Devolve a publicUrl com cache-buster.
  */
-export async function uploadAvatar(file) {
+export async function uploadAvatar(file, profileId = state.user?.id) {
   if (!state.user) throw new AppError('Faça login antes de trocar a foto.');
   if (!file.type.startsWith('image/')) throw new AppError('Envie uma imagem (PNG, JPG, GIF, WebP).');
   if (file.size > 2 * 1024 * 1024) throw new AppError('A imagem precisa ter até 2 MB.');
   const ext = (file.name.match(/\.([a-z0-9]+)$/i)?.[1] || file.type.split('/')[1] || 'png').toLowerCase();
-  const folder = state.user.id;
+  const folder = profileId;
   const path = `${folder}/avatar.${ext}`;
 
   // apaga qualquer arquivo antigo na pasta (pode ter extensão diferente)
@@ -87,17 +102,17 @@ export async function uploadAvatar(file) {
 
   const { data } = sb.storage.from('avatars').getPublicUrl(path);
   const url = `${data.publicUrl}?v=${Date.now()}`;
-  return updateProfile({ avatar_url: url });
+  return updateProfile({ avatar_url: url }, profileId);
 }
 
 /** Remove a foto do bucket e zera profiles.avatar_url. */
-export async function removeAvatar() {
+export async function removeAvatar(profileId = state.user?.id) {
   if (!state.user) return;
-  const folder = state.user.id;
+  const folder = profileId;
   try {
     const { data: existing } = await sb.storage.from('avatars').list(folder);
     const paths = (existing || []).map((f) => `${folder}/${f.name}`);
     if (paths.length) await sb.storage.from('avatars').remove(paths);
   } catch { /* o perfil ainda assim é limpo abaixo */ }
-  return updateProfile({ avatar_url: null });
+  return updateProfile({ avatar_url: null }, profileId);
 }

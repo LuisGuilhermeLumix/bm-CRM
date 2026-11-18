@@ -8,6 +8,7 @@ import { setSubRoute } from '../../router.js';
 import { avatarHtml, chipHtml, clientAvatarHtml, emptyHtml } from '../common.js';
 import { logoFileInputHtml, bindLogoUpload } from '../logoUpload.js';
 import { openUserForm } from '../userForm.js';
+import { openProfileEditor } from '../profileEditor.js';
 import { fetchAllAccess } from '../../fin/users.js';
 import { loadProfiles } from '../../auth.js';
 import { openDialog, confirmDialog, promptDialog } from '../dialog.js';
@@ -168,6 +169,7 @@ function renderUsers(c) {
               ${c.emails?.[u.id] ? `<span class="subtle truncate">${esc(c.emails[u.id])}</span>` : ''}
               ${hasRoles ? `<span class="subtle truncate">${esc(accessSummary(c, u))}</span>` : ''}
             </span>
+            <button type="button" class="btn btn--sm" data-edit="${u.id}" title="Editar nome e foto">${icon('user-pen', 'ico--sm')}<span class="hide-sm">Editar</span></button>
             ${hasRoles ? `<button type="button" class="btn btn--sm" data-perm="${u.id}">${icon('shield-check', 'ico--sm')}<span class="hide-sm">Permissões</span></button>` : ''}
             <label class="toggle" title="${u.id === me ? 'Você não pode bloquear o seu próprio acesso' : ''}">
               <input type="checkbox" data-allow="${u.id}" ${u.allowed === true ? 'checked' : ''} ${u.id === me ? 'disabled' : ''} />
@@ -180,6 +182,9 @@ function renderUsers(c) {
   refreshIcons();
   const reload = async () => { await loadProfiles().catch(() => {}); c.usersLoaded = false; loadEmails(c, true); };
   body(c).querySelector('#usAdd')?.addEventListener('click', () => openUserForm({ types: c.userTypes || [], onSaved: reload }));
+  body(c).querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => {
+    openProfileEditor(b.dataset.edit, { email: c.emails?.[b.dataset.edit] || null });
+  }));
   body(c).querySelectorAll('[data-perm]').forEach((b) => b.addEventListener('click', () => {
     const u = state.profiles[b.dataset.perm];
     if (!u) return;

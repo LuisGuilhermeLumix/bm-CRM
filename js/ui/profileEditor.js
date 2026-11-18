@@ -1,5 +1,6 @@
 // Editor de perfil: foto (upload para o bucket "avatars") e nome.
-// Trigger: menu do usuário na sidebar -> "Editar perfil".
+// Fonte única: menu do usuário na sidebar -> "Editar perfil" (o próprio) e
+// Configurações → Usuários -> "Editar" (admin editando outro, via RPC).
 import { icon, refreshIcons } from './icons.js';
 import { esc, initials } from '../utils.js';
 import { state, on } from '../state.js';
@@ -9,10 +10,14 @@ import { toastError, toastSuccess } from './toast.js';
 
 const MAX_BYTES = 2 * 1024 * 1024;
 
-export function openProfileEditor() {
-  if (!state.profile) return;
+/** profileId = outro usuário (só admin); email = e-mail dele, se conhecido. */
+export function openProfileEditor(profileId = state.user?.id, { email = null } = {}) {
+  const isMe = profileId === state.user?.id;
+  const current = () => state.profiles[profileId] || (isMe ? state.profile : null);
+  if (!current()) return;
+  const shownEmail = isMe ? (state.user?.email || '') : (email || '');
   const dlg = openDialog({
-    title: 'Editar perfil',
+    title: isMe ? 'Editar perfil' : `Editar ${current().name}`,
     size: 'md',
     body: `
       <div class="profile-editor">
@@ -27,13 +32,13 @@ export function openProfileEditor() {
         </div>
         <div class="form-field">
           <label for="peName">Nome</label>
-          <input class="input" id="peName" value="${esc(state.profile.name)}" autocomplete="name" />
+          <input class="input" id="peName" value="${esc(current().name)}" autocomplete="${isMe ? 'name' : 'off'}" />
           <p class="hint">O nome é salvo automaticamente ao sair do campo.</p>
         </div>
-        <div class="form-field">
+        ${shownEmail ? `<div class="form-field">
           <label>E-mail</label>
-          <input class="input" value="${esc(state.user?.email || '')}" disabled />
-        </div>
+          <input class="input" value="${esc(shownEmail)}" disabled />
+        </div>` : ''}
       </div>`,
     actions: [{ label: 'Fechar', cls: '', value: 'close' }],
   });
@@ -46,7 +51,7 @@ export function openProfileEditor() {
   const name = root.querySelector('#peName');
 
   const paintAvatar = () => {
-    const p = state.profile;
+    const p = current();
     if (!p) { avatarBtn.innerHTML = ''; return; }
     if (p.avatar_url) {
       avatarBtn.className = 'profile-editor__avatar has-img';
@@ -76,7 +81,7 @@ export function openProfileEditor() {
     if (f.size > MAX_BYTES) { toastError(new Error('A imagem precisa ter até 2 MB.')); return; }
     setBusy(true);
     try {
-      await uploadAvatar(f);
+      await uploadAvatar(f, profileId);
       toastSuccess('Foto atualizada.');
     } catch (e) {
       toastError(e);
@@ -86,12 +91,12 @@ export function openProfileEditor() {
   });
 
   remove.addEventListener('click', async () => {
-    if (!state.profile?.avatar_url) return;
+    if (!current()?.avatar_url) return;
     const ok = await confirmDialog({ title: 'Remover foto?', message: 'A foto será apagada do servidor e o avatar volta para a inicial colorida.', confirmText: 'Remover' });
     if (!ok) return;
     setBusy(true);
     try {
-      await removeAvatar();
+      await removeAvatar(profileId);
       toastSuccess('Foto removida.');
     } catch (e) {
       toastError(e);
@@ -102,11 +107,11 @@ export function openProfileEditor() {
 
   const saveName = async () => {
     const v = name.value.trim();
-    if (!v || v === state.profile?.name) { if (!v) name.value = state.profile?.name || ''; return; }
+    if (!v || v === current()?.name) { if (!v) name.value = current()?.name || ''; return; }
     try {
-      await updateProfile({ name: v });
+      await updateProfile({ name: v }, profileId);
       toastSuccess('Nome atualizado.');
-    } catch (e) { toastError(e); name.value = state.profile?.name || ''; }
+    } catch (e) { toastError(e); name.value = current()?.name || ''; }
   };
   name.addEventListener('blur', saveName);
   name.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); name.blur(); } });
@@ -115,7 +120,7 @@ export function openProfileEditor() {
   // repinta o avatar e o nome (sem sobrescrever digitação em andamento).
   const off = on('profiles', () => {
     paintAvatar();
-    if (document.activeElement !== name) name.value = state.profile?.name || '';
+    if (document.activeElement !== name) name.value = current()?.name || '';
   });
   dlg.result.then(() => off());
 
