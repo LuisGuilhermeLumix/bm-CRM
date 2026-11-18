@@ -13,7 +13,7 @@ import {
   CATEGORY_KINDS, fetchCategories, createCategory, renameCategory, deleteCategory, categoryUsage,
   fetchOperationTypes, createOperationType, updateOperationType,
   fetchPartners, createPartner, updatePartner,
-  fetchRules, saveRules, fetchSettings, saveSettings, setProfileAllowed,
+  fetchRules, saveRules, fetchSettings, saveSettings, setProfileAllowed, fetchProfileEmails,
 } from '../../fin/refs.js';
 
 const TABS = [
@@ -28,6 +28,7 @@ export function mount(container, route) {
   const c = ctx = {
     container, offs: [], seq: 0,
     tab: TABS.some((t) => t.id === route?.sub) ? route.sub : 'usuarios',
+    emails: null, emailsError: null, // aba Usuários: { id: email } (RPC da migration 012)
   };
   container.innerHTML = `
     <div class="page__inner page__inner--narrow">
@@ -52,7 +53,7 @@ function showTab(c, tab, updateUrl = true) {
   host.innerHTML = TABS.map((t) => `
     <button type="button" class="tab ${t.id === tab ? 'is-active' : ''}" role="tab" aria-selected="${t.id === tab}" data-tab="${t.id}">${icon(t.icon, 'ico--sm')} ${esc(t.label)}</button>`).join('');
   host.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => { if (b.dataset.tab !== c.tab) showTab(c, b.dataset.tab); }));
-  if (tab === 'usuarios') renderUsers(c);
+  if (tab === 'usuarios') { renderUsers(c); loadEmails(c); }
   else if (tab === 'categorias') loadCategories(c);
   else loadOperations(c);
   refreshIcons();
@@ -92,6 +93,20 @@ function bindInlineInput(input, getCurrent, save) {
 // ============================================================================
 // USUÁRIOS
 // ============================================================================
+/** Busca os e-mails uma vez por visita; a lista aparece antes e ganha o e-mail quando chega. */
+async function loadEmails(c) {
+  if (c.emails || c.emailsLoading) return;
+  c.emailsLoading = true;
+  try {
+    c.emails = await fetchProfileEmails();
+    c.emailsError = null;
+  } catch (e) {
+    c.emailsError = e;
+  }
+  c.emailsLoading = false;
+  if (ctx === c && c.tab === 'usuarios') renderUsers(c);
+}
+
 function renderUsers(c) {
   const me = state.user?.id;
   const users = Object.values(state.profiles).sort((a, b) =>
@@ -106,11 +121,15 @@ function renderUsers(c) {
         </div>
         <span class="panel__meta">${allowedCount} de ${users.length} liberados</span>
       </header>
+      ${c.emailsError ? `<div class="info-box info-box--warn">${icon('triangle-alert')}<span>Não deu para ler os e-mails. ${esc(c.emailsError.message || '')}</span></div>` : ''}
       <div class="settings-list">
         ${users.map((u) => `
           <div class="settings-row settings-row--user">
             ${avatarHtml(u, 'lg')}
-            <span class="settings-row__name">${esc(u.name)}${u.id === me ? ' <span class="subtle">(você)</span>' : ''}</span>
+            <span class="settings-row__who">
+              <span class="settings-row__name">${esc(u.name)}${u.id === me ? ' <span class="subtle">(você)</span>' : ''}</span>
+              ${c.emails?.[u.id] ? `<span class="subtle truncate">${esc(c.emails[u.id])}</span>` : ''}
+            </span>
             <label class="toggle" title="${u.id === me ? 'Você não pode bloquear o seu próprio acesso' : ''}">
               <input type="checkbox" data-allow="${u.id}" ${u.allowed === true ? 'checked' : ''} ${u.id === me ? 'disabled' : ''} />
               <span class="toggle__track"></span>
@@ -119,6 +138,7 @@ function renderUsers(c) {
           </div>`).join('')}
       </div>
     </section>`;
+  refreshIcons();
   body(c).querySelectorAll('[data-allow]').forEach((inp) => inp.addEventListener('change', async () => {
     const id = inp.dataset.allow;
     const allowed = inp.checked;

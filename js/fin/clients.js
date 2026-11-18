@@ -1,7 +1,6 @@
 // Clientes (fin_clients): CRUD, vínculos e realtime
 import { sb, run } from '../supabase.js';
 import { fetchAll, countRows } from './db.js';
-import { stageOf } from './format.js';
 
 export function fetchClients() {
   return fetchAll(() => sb.from('fin_clients').select('*').order('name').order('id'));
@@ -13,11 +12,6 @@ export function createClient(data) {
 
 export function updateClient(id, patch) {
   return run(sb.from('fin_clients').update(patch).eq('id', id).select().single());
-}
-
-/** Muda o estágio e mantém o rótulo legado `status` coerente com ele. */
-export function setClientStage(id, stage) {
-  return updateClient(id, { stage, status: stageOf(stage).label });
 }
 
 export function deleteClient(id) {

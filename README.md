@@ -177,4 +177,5 @@ supabase/migrations/008_date_deadline.sql       campo de data como prazo (is_dea
 supabase/migrations/009_fork_field.sql          definição de campo por card
 supabase/migrations/010_fin_schema.sql          tabelas do Financeiro (fin_*)
 supabase/migrations/011_fin_config.sql          liberar/bloquear usuário pelo app + fin_settings
+supabase/migrations/012_profile_emails.sql      e-mail dos usuários em Configurações (crm_profile_emails)
 ```

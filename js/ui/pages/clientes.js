@@ -1,31 +1,26 @@
-// Seção Clientes (#/clientes): indicadores, lista ou pipeline, filtros, modal
-// de criar/editar e realtime em fin_clients.
-import Sortable from 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/modular/sortable.esm.js';
+// Seção Clientes (#/clientes): indicadores, lista com filtros, modal de
+// criar/editar e realtime em fin_clients.
 import { icon, refreshIcons } from '../icons.js';
-import { esc, storage, debounce } from '../../utils.js';
+import { esc, debounce } from '../../utils.js';
 import { on, profileOf, stable } from '../../state.js';
 import { chipHtml, avatarHtml, emptyHtml } from '../common.js';
 import { tagChipsHtml } from '../tagsInput.js';
-import { toastError } from '../toast.js';
 import { openClientForm, clientLogoHtml } from '../clientForm.js';
 import { STAGES, stageOf, brl, dateShort, fold } from '../../fin/format.js';
 import { isMissingInDb } from '../../fin/db.js';
-import { fetchClients, setClientStage, subscribeClients } from '../../fin/clients.js';
+import { fetchClients, subscribeClients } from '../../fin/clients.js';
 import { fetchOperationTypes } from '../../fin/refs.js';
 
-const VIEW_KEY = 'lumix.clientsView';
 let ctx = null; // estado da página montada (null fora da seção)
 
 export function mount(container) {
   const c = ctx = {
     container,
     clients: [], types: [], loading: true, error: null,
-    view: storage.get(VIEW_KEY) === 'pipeline' ? 'pipeline' : 'list',
-    q: '', stage: '', type: '',
-    sortables: [], dragging: false, pendingRender: false, offs: [],
+    q: '', stage: '', type: '', offs: [],
   };
   container.innerHTML = `
-    <div class="page__inner" id="clRoot">
+    <div class="page__inner">
       <div class="stats" id="clStats"></div>
       <div class="toolbar">
         <label class="filter-search">
@@ -40,10 +35,6 @@ export function mount(container) {
           <option value="">Todos os tipos</option>
         </select>
         <div class="toolbar__spacer"></div>
-        <div class="segmented" role="group" aria-label="Visão">
-          <button type="button" data-view="list">${icon('list')}<span>Lista</span></button>
-          <button type="button" data-view="pipeline">${icon('kanban')}<span>Pipeline</span></button>
-        </div>
         <button type="button" class="btn btn--primary" id="clNew">${icon('plus')}<span>Novo cliente</span></button>
       </div>
       <div class="page__body" id="clBody"></div>
@@ -54,18 +45,13 @@ export function mount(container) {
   $('#clSearch').addEventListener('input', debounce(() => { c.q = $('#clSearch').value; renderBody(c); }, 120));
   $('#clStage').addEventListener('change', (e) => { c.stage = e.target.value; renderBody(c); });
   $('#clType').addEventListener('change', (e) => { c.type = e.target.value; renderBody(c); });
-  container.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => {
-    c.view = b.dataset.view;
-    storage.set(VIEW_KEY, c.view);
-    render(c);
-  }));
   $('#clNew').addEventListener('click', () => openForm(c, null));
   $('#clBody').addEventListener('click', (e) => {
     if (e.target.closest('[data-retry]')) { load(c); return; }
     if (e.target.closest('[data-new]')) { openForm(c, null); return; }
     if (e.target.closest('[data-clear-filters]')) { clearFilters(c); return; }
     const row = e.target.closest('[data-client-id]');
-    if (row && !c.justDragged) openForm(c, c.clients.find((x) => x.id === row.dataset.clientId));
+    if (row) openForm(c, c.clients.find((x) => x.id === row.dataset.clientId));
   });
   $('#clBody').addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
@@ -84,7 +70,6 @@ export function unmount() {
   const c = ctx;
   ctx = null;
   c.offs.forEach((off) => off());
-  destroySortables(c);
 }
 
 async function load(c) {
@@ -136,7 +121,6 @@ function onRealtime(c, payload) {
   if (ctx !== c || c.loading) return;
   const changed = payload.eventType === 'DELETE' ? removeLocal(c, payload.old?.id) : upsertLocal(c, payload.new);
   if (!changed) return;
-  if (c.dragging) { c.pendingRender = true; return; } // não mexe no DOM no meio de um arraste
   renderStats(c);
   renderBody(c);
 }
@@ -167,13 +151,6 @@ function openForm(c, client) {
 // Render
 // ----------------------------------------------------------------------------
 function render(c) {
-  const root = c.container.querySelector('#clRoot');
-  root.classList.toggle('page__inner--fill', c.view === 'pipeline');
-  c.container.querySelectorAll('[data-view]').forEach((b) => {
-    const active = b.dataset.view === c.view;
-    b.classList.toggle('is-active', active);
-    b.setAttribute('aria-pressed', String(active));
-  });
   // tipos no filtro (preserva a escolha)
   const sel = c.container.querySelector('#clType');
   sel.innerHTML = `<option value="">Todos os tipos</option>${c.types.map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}`;
@@ -201,53 +178,33 @@ function renderStats(c) {
   refreshIcons();
 }
 
-function destroySortables(c) {
-  c.sortables.forEach((s) => { try { s.destroy(); } catch { /* ignore */ } });
-  c.sortables = [];
-}
-
 function renderBody(c) {
   const body = c.container.querySelector('#clBody');
   if (!body) return;
-  destroySortables(c);
-  body.classList.toggle('page__body--fill', c.view === 'pipeline' && !c.loading && !c.error && c.clients.length > 0);
+  const state = (html) => { body.innerHTML = `<div class="page-state">${html}</div>`; refreshIcons(); };
 
-  if (c.loading) {
-    body.innerHTML = `<div class="page-state">${icon('loader-circle', 'spin')} Carregando clientes…</div>`;
-    refreshIcons();
-    return;
-  }
+  if (c.loading) return state(`${icon('loader-circle', 'spin')} Carregando clientes…`);
   if (c.error) {
-    body.innerHTML = `<div class="page-state">${emptyHtml({
+    return state(emptyHtml({
       icon: 'triangle-alert', title: 'Não deu para carregar', text: c.error,
       action: `<button type="button" class="btn" data-retry>${icon('refresh-cw')} Tentar de novo</button>`,
-    })}</div>`;
-    refreshIcons();
-    return;
+    }));
   }
   if (!c.clients.length) {
-    body.innerHTML = `<div class="page-state">${emptyHtml({
-      icon: 'users', title: 'Nenhum cliente ainda', text: 'Cadastre o primeiro cliente para acompanhar o pipeline e o MRR.',
+    return state(emptyHtml({
+      icon: 'users', title: 'Nenhum cliente ainda', text: 'Cadastre o primeiro cliente para acompanhar o MRR e os estágios.',
       action: `<button type="button" class="btn btn--primary" data-new>${icon('plus')} Novo cliente</button>`,
-    })}</div>`;
-    refreshIcons();
-    return;
+    }));
   }
-
   const rows = filtered(c);
-  if (c.view === 'pipeline') renderPipeline(c, body, rows);
-  else renderList(c, body, rows);
-  refreshIcons();
-}
-
-function renderList(c, body, rows) {
   if (!rows.length) {
-    body.innerHTML = `<div class="page-state">${emptyHtml({
+    return state(emptyHtml({
       icon: 'search', title: 'Nenhum cliente corresponde ao filtro',
       action: `<button type="button" class="btn" data-clear-filters>${icon('x')} Limpar filtros</button>`,
-    })}</div>`;
-    return;
+    }));
   }
+
+  // No celular só cabem cliente e MRR: o estágio desce para baixo do nome (.show-sm)
   body.innerHTML = `
     <div class="table-wrap">
       <table class="table table--clickable">
@@ -277,85 +234,5 @@ function renderList(c, body, rows) {
         }).join('')}</tbody>
       </table>
     </div>`;
-}
-
-function renderPipeline(c, body, rows) {
-  const prev = body.querySelector('.kanban');
-  const scrollLeft = prev?.scrollLeft || 0;
-  const filtering = !!(c.q.trim() || c.stage || c.type);
-  body.innerHTML = `
-    <div class="kanban kanban--pipeline">${STAGES.map((s) => {
-      const all = c.clients.filter((x) => x.stage === s.id);
-      const list = rows.filter((x) => x.stage === s.id);
-      const mrr = list.reduce((sum, x) => sum + Number(x.mrr || 0), 0);
-      return `
-      <section class="column" style="--c:${s.color}">
-        <header class="column__header">
-          <span class="dot"></span>
-          <h3 class="column__name">${esc(s.label)}</h3>
-          <span class="column__count" title="Clientes neste estágio">${filtering ? `${list.length}/${all.length}` : all.length}</span>
-        </header>
-        <div class="column__sub">${esc(brl(mrr))} de MRR</div>
-        <div class="column__list" data-stage="${s.id}">${list.map((x) => pipelineCardHtml(c, x)).join('')}</div>
-      </section>`;
-    }).join('')}</div>`;
-  const kanban = body.querySelector('.kanban');
-  kanban.scrollLeft = scrollLeft;
-
-  kanban.querySelectorAll('.column__list').forEach((list) => {
-    c.sortables.push(new Sortable(list, {
-      group: 'clients', sort: false, draggable: '.card',
-      animation: 150, delay: 150, delayOnTouchOnly: true, touchStartThreshold: 5, fallbackTolerance: 3,
-      ghostClass: 'card--ghost', chosenClass: 'card--chosen', dragClass: 'card--drag',
-      fallbackOnBody: true, emptyInsertThreshold: 24,
-      onStart: () => { c.dragging = true; },
-      onEnd: (evt) => {
-        c.justDragged = true;
-        setTimeout(() => { c.justDragged = false; }, 200);
-        setTimeout(() => {
-          c.dragging = false;
-          c.pendingRender = false;
-          onDrop(c, evt.item.dataset.clientId, evt.from.dataset.stage, evt.to.dataset.stage);
-        }, 0);
-      },
-    }));
-  });
-}
-
-function pipelineCardHtml(c, x) {
-  const type = typeOf(c, x.operation_type_id);
-  const owner = profileOf(x.owner_id);
-  return `
-  <article class="card" data-client-id="${x.id}">
-    <div class="cell-main">${clientLogoHtml(x)}<span class="card__title truncate">${esc(x.name)}</span></div>
-    ${x.contact ? `<div class="card__field">${icon('user')}<span>${esc(x.contact)}</span></div>` : ''}
-    ${type || (x.tags || []).length ? `<div class="card__tags">${type ? chipHtml(type.name, type.color, { small: true }) : ''}${tagChipsHtml(x.tags)}</div>` : ''}
-    <div class="card__footer">
-      <span class="row">${owner ? avatarHtml(owner, 'sm') : ''}<span>${x.since ? `desde ${esc(dateShort(x.since))}` : ''}</span></span>
-      <span class="card__amount" title="MRR">${esc(brl(x.mrr))}</span>
-    </div>
-  </article>`;
-}
-
-/** Soltou um card: se mudou de coluna, grava o novo estágio (otimista, com volta em caso de erro). */
-async function onDrop(c, id, from, to) {
-  if (ctx !== c) return;
-  const client = c.clients.find((x) => x.id === id);
-  if (!client || from === to) { renderStats(c); renderBody(c); return; }
-  const before = { ...client };
-  client.stage = to;
-  client.status = stageOf(to).label;
-  renderStats(c);
-  renderBody(c);
-  try {
-    const row = await setClientStage(id, to);
-    if (ctx !== c) return;
-    if (upsertLocal(c, row)) { renderStats(c); renderBody(c); }
-  } catch (e) {
-    toastError(e);
-    if (ctx !== c) return;
-    upsertLocal(c, before);
-    renderStats(c);
-    renderBody(c);
-  }
+  refreshIcons();
 }

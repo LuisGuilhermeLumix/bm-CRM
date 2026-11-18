@@ -1,7 +1,7 @@
 // Formatação e rótulos do Financeiro / Clientes
 import { formatCurrency } from '../utils.js';
 
-/** Estágios de cliente, na ordem do pipeline. `done` existe por causa dos dados antigos. */
+/** Estágios de cliente, na ordem do funil. `done` existe por causa dos dados antigos. */
 export const STAGES = [
   { id: 'lead',     label: 'Lead',          color: '#6b7280' },
   { id: 'deal',     label: 'Em negociação', color: '#f59e0b' },

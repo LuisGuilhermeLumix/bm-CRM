@@ -362,9 +362,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: po
 .page-placeholder { flex: 1; display: flex; align-items: center; justify-content: center; }
 .page__inner { width: 100%; max-width: 1320px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--sp-4); flex-shrink: 0; }
 .page__inner--narrow { max-width: 980px; }
-.page__inner--fill { height: 100%; flex-shrink: 1; min-height: 480px; } /* pipeline ocupa a altura que sobra */
 .page__body { min-width: 0; }
-.page__body--fill { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .page-state { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--text-2); padding: var(--sp-8) var(--sp-4); }
 
 /* Indicadores (número grande + rótulo). O número usa a cor de texto, nunca cor de série. */
@@ -427,12 +425,6 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: po
 .form-row--end > .btn { flex: 0 0 auto; }
 .form-field--fit { flex: 0 0 auto; }
 
-/* Pipeline de clientes: reaproveita .kanban / .column / .card do board */
-.kanban--pipeline { padding: 0 0 4px; }
-.kanban--pipeline .column__header { cursor: default; padding-bottom: 2px; }
-.column__sub { font-size: var(--fs-xs); color: var(--text-3); padding: 0 14px 8px 32px; font-variant-numeric: tabular-nums; }
-.card__amount { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text); font-variant-numeric: tabular-nums; }
-
 /* Campo de tags livres */
 .tags-input {
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 36px; padding: 5px 8px; cursor: text;
@@ -462,6 +454,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: po
 .add-row { display: flex; gap: var(--sp-2); }
 .add-row .input { flex: 1; min-width: 0; }
 .settings-row--user { padding: 8px 12px; gap: 12px; }
+.settings-row__who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.settings-row__who .settings-row__name { flex: none; }
 .settings-row__grow { flex: 1 1 140px; }
 .settings-row__pix { flex: 1 1 180px; max-width: 280px; }
 .toggle__text { font-size: var(--fs-sm); color: var(--text-2); }
@@ -776,7 +770,6 @@ kbd { font-family: inherit; font-size: var(--fs-xs); border: 1px solid var(--bor
   .toolbar > .btn--primary { flex: 1; }
   .hide-sm { display: none; }
   .table th, .table td { padding: 10px; }
-  .page__inner--fill { min-height: 560px; }
   .settings-row--partner { flex-wrap: wrap; }
   .settings-row__pix { max-width: none; flex-basis: 100%; order: 5; }
   .panel__head { flex-wrap: wrap; }

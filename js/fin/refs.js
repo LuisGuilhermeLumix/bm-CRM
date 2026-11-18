@@ -6,6 +6,7 @@ import { countRows, withMigrationHint } from './db.js';
 import { slugify } from './format.js';
 
 const MIGRATION_CONFIG = '011_fin_config.sql';
+const MIGRATION_EMAILS = '012_profile_emails.sql';
 
 // --- Categorias / centros de custo -------------------------------------------
 
@@ -107,6 +108,16 @@ export async function saveSettings(values) {
 }
 
 // --- Usuários ------------------------------------------------------------------
+
+/** { <profile_id>: email } — RPC crm_profile_emails (migration 012), só para quem é liberado. */
+export async function fetchProfileEmails() {
+  try {
+    const rows = await run(sb.rpc('crm_profile_emails'));
+    return Object.fromEntries((rows || []).map((r) => [r.id, r.email]));
+  } catch (e) {
+    throw withMigrationHint(e, MIGRATION_EMAILS);
+  }
+}
 
 /** Libera/bloqueia o acesso de um perfil (RPC set_profile_allowed, migration 011). */
 export async function setProfileAllowed(id, allowed) {
